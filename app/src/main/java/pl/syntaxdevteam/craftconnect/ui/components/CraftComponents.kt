@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Chat
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Settings
@@ -248,7 +248,7 @@ fun SessionHeader(server: ServerProfile) {
 fun CraftBottomBar(destination: AppDestination, onDestination: (AppDestination) -> Unit) {
     NavigationBar(containerColor = Color(0xF20B0C0F), tonalElevation = 0.dp) {
         BottomItem(AppDestination.Servers, stringResource(R.string.nav_servers), Icons.Rounded.Home, destination, onDestination)
-        BottomItem(AppDestination.Chat, stringResource(R.string.nav_chat), Icons.Rounded.Chat, destination, onDestination)
+        BottomItem(AppDestination.Chat, stringResource(R.string.nav_chat), Icons.AutoMirrored.Rounded.Chat, destination, onDestination)
         BottomItem(AppDestination.Players, stringResource(R.string.nav_players), Icons.Rounded.Person, destination, onDestination)
         BottomItem(AppDestination.Settings, stringResource(R.string.nav_settings), Icons.Rounded.Settings, destination, onDestination)
     }

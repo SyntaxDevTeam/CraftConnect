@@ -67,7 +67,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
+        uses: gradle/actions/wrapper-validation@v6
 
       - name: Build and lint
         shell: bash

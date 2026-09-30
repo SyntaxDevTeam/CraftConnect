@@ -12,7 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -103,7 +103,7 @@ fun ChatScreen(server: ServerProfile) {
                     }
                 },
             ) {
-                Icon(Icons.Rounded.Send, contentDescription = stringResource(R.string.send), tint = Crimson)
+                Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = stringResource(R.string.send), tint = Crimson)
             }
         }
 
