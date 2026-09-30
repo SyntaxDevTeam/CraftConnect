@@ -7,11 +7,7 @@ import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
 
 object DemoRepository {
     val servers = listOf(
-        ServerProfile("hypixel", "Hypixel", "mc.hypixel.net", true, 184320, 200000, 46, true),
-        ServerProfile("minemen", "Minemen Club", "minemen.club", true, 1203, 5000, 31),
-        ServerProfile("mcci", "MCCI", "play.mccisland.net", true, 3421, 10000, 55),
-        ServerProfile("cubecraft", "CubeCraft", "play.cubecraft.net", true, 2876, 20000, 63),
-        ServerProfile("local", "Local Server", "192.168.1.100:25565", false, 0, 20, null),
+        ServerProfile("local", "Local Server", "10.0.2.2:25565", false, 0, 0, null, true),
     )
 
     val messages = listOf(

@@ -5,13 +5,27 @@ CraftConnect is an Android application that behaves as a lightweight Minecraft p
 ## Layers
 
 - **ui/** — Jetpack Compose screens, visual components and theme.
-- **domain/model/** — app-level models independent from packet implementations.
+- **domain/model/** — app-level content models independent from packet implementations.
+- **domain/session/** — observable session state, lifecycle events and the UI-facing session contract.
 - **data/** — repositories, persistence and external data adapters.
 - **protocol/** — Minecraft connection and packet handling boundary.
 
 The UI must not depend directly on packet classes.
 
+`DefaultSessionManager` is the adapter between the domain-facing `SessionManager` and
+the packet-independent `MinecraftConnection`. It serializes lifecycle operations,
+publishes state through `StateFlow`, emits one-off lifecycle events through
+`SharedFlow`, and maps protocol failures to diagnostic domain errors without exposing
+exception messages that could contain server or account data.
+
 ## Initial protocol scope
+
+The first concrete adapter is deliberately narrow: `LegacyOfflineMinecraftConnection`
+implements offline-mode login for Java protocol 47 (Minecraft 1.8.x), compression,
+keep-alive, the initial position response, chat and commands. It is useful directly on
+legacy servers and through protocol translators, but it is not an "auto/latest" client.
+Additional versions belong in separate adapters rather than conditional packet IDs in
+the legacy implementation.
 
 The first real networking milestone should implement only what the product needs:
 

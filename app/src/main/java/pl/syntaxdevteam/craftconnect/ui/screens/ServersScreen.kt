@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import pl.syntaxdevteam.craftconnect.R
 import pl.syntaxdevteam.craftconnect.data.DemoRepository
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
+import pl.syntaxdevteam.craftconnect.domain.session.ConnectionState
 import pl.syntaxdevteam.craftconnect.ui.components.BrandHeader
 import pl.syntaxdevteam.craftconnect.ui.components.GlowButton
 import pl.syntaxdevteam.craftconnect.ui.components.NeonCard
@@ -48,9 +50,14 @@ import pl.syntaxdevteam.craftconnect.ui.theme.TextPrimary
 import pl.syntaxdevteam.craftconnect.ui.theme.TextSecondary
 
 @Composable
-fun ServersScreen(onConnect: (ServerProfile) -> Unit) {
+fun ServersScreen(
+    connectionState: ConnectionState,
+    onConnect: (ServerProfile, String) -> Unit,
+) {
     var query by remember { mutableStateOf("") }
     var favoritesOnly by remember { mutableStateOf(false) }
+    var connectionTarget by remember { mutableStateOf<ServerProfile?>(null) }
+    var customConnection by remember { mutableStateOf(false) }
 
     val servers = DemoRepository.servers.filter { server ->
         (!favoritesOnly || server.favorite) &&
@@ -85,7 +92,7 @@ fun ServersScreen(onConnect: (ServerProfile) -> Unit) {
                 ),
             )
             Spacer(Modifier.width(8.dp))
-            IconButton(onClick = { }) {
+            IconButton(onClick = { customConnection = true }) {
                 Icon(
                     Icons.Rounded.Add,
                     contentDescription = stringResource(R.string.add_server),
@@ -107,10 +114,83 @@ fun ServersScreen(onConnect: (ServerProfile) -> Unit) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(servers, key = { it.id }) { server ->
-                ServerRow(server, onConnect = { onConnect(server) })
+                ServerRow(server, onConnect = { connectionTarget = server })
             }
         }
     }
+
+    val target = connectionTarget
+    if (target != null || customConnection) {
+        OfflineConnectDialog(
+            initialAddress = target?.address.orEmpty(),
+            connecting = connectionState == ConnectionState.CONNECTING,
+            failed = connectionState == ConnectionState.FAILED,
+            onDismiss = {
+                connectionTarget = null
+                customConnection = false
+            },
+            onConnect = { address, username ->
+                val server = target ?: ServerProfile(
+                    id = "custom-$address",
+                    name = address,
+                    address = address,
+                    online = false,
+                    playersOnline = 0,
+                    playersMax = 0,
+                    pingMs = null,
+                )
+                onConnect(server.copy(address = address), username)
+            },
+        )
+    }
+}
+
+@Composable
+private fun OfflineConnectDialog(
+    initialAddress: String,
+    connecting: Boolean,
+    failed: Boolean,
+    onDismiss: () -> Unit,
+    onConnect: (String, String) -> Unit,
+) {
+    var address by remember(initialAddress) { mutableStateOf(initialAddress) }
+    var username by remember { mutableStateOf("") }
+    val valid = address.isNotBlank() && Regex("[A-Za-z0-9_]{3,16}").matches(username)
+
+    AlertDialog(
+        onDismissRequest = { if (!connecting) onDismiss() },
+        title = { Text(stringResource(R.string.quick_connect)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    label = { Text(stringResource(R.string.server_address)) },
+                    singleLine = true,
+                    enabled = !connecting,
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text(stringResource(R.string.offline_username)) },
+                    singleLine = true,
+                    enabled = !connecting,
+                )
+                Text(stringResource(R.string.legacy_protocol_notice), color = TextSecondary, fontSize = 12.sp)
+                if (failed) Text(stringResource(R.string.connection_failed), color = Crimson, fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            GlowButton(
+                if (connecting) stringResource(R.string.connecting) else stringResource(R.string.connect),
+                onClick = { if (valid && !connecting) onConnect(address.trim(), username) },
+            )
+        },
+        dismissButton = {
+            GlowButton(stringResource(R.string.cancel), onClick = onDismiss)
+        },
+        containerColor = SurfaceRaised,
+    )
 }
 
 @Composable
