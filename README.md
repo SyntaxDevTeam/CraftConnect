@@ -12,8 +12,9 @@ Implemented now:
 
 - Kotlin + Jetpack Compose Android project,
 - dark crimson / neon design system,
+- branded launcher, adaptive and in-app logo assets,
 - saved server browser,
-- direct offline-mode connection using Minecraft Java 1.8.x protocol 47,
+- direct offline-mode connection using Minecraft Java 26.1 protocol 775,
 - chat and command surface,
 - online player list,
 - settings screen,
@@ -24,10 +25,10 @@ Implemented now:
 - GitHub Actions Android CI,
 - repository guidance in `AGENTS.md`.
 
-The first networking slice supports direct TCP login to an offline-mode server using
-Minecraft Java 1.8.x protocol 47, compression negotiation, keep-alive replies and the
-initial position acknowledgement. Modern servers need a compatibility layer such as
-ViaVersion until a current protocol adapter is implemented.
+The default networking adapter supports direct TCP login to an offline-mode server using
+Minecraft Java 26.1 protocol 775, including the login, configuration and play states,
+compression negotiation, keep-alive replies and position acknowledgement. The older
+protocol 47 adapter remains isolated for later explicit version selection.
 
 The client sends only the selected nickname. In offline mode the server or proxy owns
 identity assignment and returns the UUID during login; CraftConnect does not allow an

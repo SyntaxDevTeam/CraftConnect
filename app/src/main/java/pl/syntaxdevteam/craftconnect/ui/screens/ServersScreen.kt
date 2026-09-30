@@ -52,6 +52,7 @@ import pl.syntaxdevteam.craftconnect.ui.theme.TextSecondary
 @Composable
 fun ServersScreen(
     connectionState: ConnectionState,
+    connectionError: String?,
     onConnect: (ServerProfile, String) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
@@ -125,6 +126,7 @@ fun ServersScreen(
             initialAddress = target?.address.orEmpty(),
             connecting = connectionState == ConnectionState.CONNECTING,
             failed = connectionState == ConnectionState.FAILED,
+            connectionError = connectionError,
             onDismiss = {
                 connectionTarget = null
                 customConnection = false
@@ -150,6 +152,7 @@ private fun OfflineConnectDialog(
     initialAddress: String,
     connecting: Boolean,
     failed: Boolean,
+    connectionError: String?,
     onDismiss: () -> Unit,
     onConnect: (String, String) -> Unit,
 ) {
@@ -176,8 +179,14 @@ private fun OfflineConnectDialog(
                     singleLine = true,
                     enabled = !connecting,
                 )
-                Text(stringResource(R.string.legacy_protocol_notice), color = TextSecondary, fontSize = 12.sp)
-                if (failed) Text(stringResource(R.string.connection_failed), color = Crimson, fontSize = 12.sp)
+                Text(stringResource(R.string.modern_protocol_notice), color = TextSecondary, fontSize = 12.sp)
+                if (failed) {
+                    Text(
+                        connectionError ?: stringResource(R.string.connection_failed),
+                        color = Crimson,
+                        fontSize = 12.sp,
+                    )
+                }
             }
         },
         confirmButton = {

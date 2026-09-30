@@ -37,6 +37,7 @@ fun CraftConnectApp(sessionManagerFactory: SessionManagerFactory) {
     var activeServer by remember { mutableStateOf<ServerProfile?>(null) }
     var sessionManager by remember { mutableStateOf<SessionManager?>(null) }
     var connectionState by remember { mutableStateOf(ConnectionState.DISCONNECTED) }
+    var connectionError by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     CraftBackground {
@@ -55,13 +56,16 @@ fun CraftConnectApp(sessionManagerFactory: SessionManagerFactory) {
                 when (destination) {
                     AppDestination.Servers -> ServersScreen(
                         connectionState = connectionState,
+                        connectionError = connectionError,
                         onConnect = { server, username ->
                             coroutineScope.launch {
                                 val manager = sessionManagerFactory.create()
                                 sessionManager = manager
                                 connectionState = ConnectionState.CONNECTING
+                                connectionError = null
                                 manager.connect(server, username)
                                 connectionState = manager.session.value.connectionState
+                                connectionError = manager.session.value.lastError?.serverMessage
                                 if (connectionState == ConnectionState.CONNECTED) {
                                     activeServer = server.copy(online = true)
                                     destination = AppDestination.Chat

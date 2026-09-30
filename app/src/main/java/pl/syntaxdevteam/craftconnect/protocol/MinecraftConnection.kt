@@ -21,9 +21,11 @@ interface MinecraftConnection {
 
 sealed class MinecraftConnectionException(
     val diagnosticCode: String,
+    val serverMessage: String? = null,
     cause: Throwable? = null,
 ) : Exception(diagnosticCode, cause) {
-    class Network(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, cause)
-    class Authentication(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, cause)
-    class Protocol(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, cause)
+    class Network(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, cause = cause)
+    class Authentication(code: String, serverMessage: String? = null) :
+        MinecraftConnectionException(code, serverMessage)
+    class Protocol(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, cause = cause)
 }

@@ -105,7 +105,7 @@ class DefaultSessionManager(
 }
 
 private fun MinecraftConnectionException.toSessionError(): SessionError = when (this) {
-    is MinecraftConnectionException.Network -> SessionError.Network(diagnosticCode)
-    is MinecraftConnectionException.Authentication -> SessionError.Authentication(diagnosticCode)
-    is MinecraftConnectionException.Protocol -> SessionError.Protocol(diagnosticCode)
+    is MinecraftConnectionException.Network -> SessionError.Network(diagnosticCode, serverMessage)
+    is MinecraftConnectionException.Authentication -> SessionError.Authentication(diagnosticCode, serverMessage)
+    is MinecraftConnectionException.Protocol -> SessionError.Protocol(diagnosticCode, serverMessage)
 }

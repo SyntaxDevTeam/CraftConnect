@@ -51,6 +51,22 @@ class DefaultSessionManagerTest {
     }
 
     @Test
+    fun serverRejectionMessageIsPreservedForTheUi() = runTest {
+        val manager = DefaultSessionManager(
+            FakeConnection(
+                connectFailure = MinecraftConnectionException.Authentication(
+                    "login_rejected",
+                    "Outdated client!",
+                ),
+            ),
+        )
+
+        manager.connect(server, "CraftyDev")
+
+        assertEquals("Outdated client!", manager.session.value.lastError?.serverMessage)
+    }
+
+    @Test
     fun sendingRequiresConnectedSession() = runTest {
         val manager = DefaultSessionManager(FakeConnection())
 

@@ -35,14 +35,22 @@ class LegacyOfflineMinecraftConnectionTest {
                     }, null))
                     output.flush()
 
+                    val settings = readPacket(input, null)
+                    assertEquals(0x15, settings.readVarInt())
+                    assertEquals("en_US", settings.readProtocolString())
+                    val brand = readPacket(input, null)
+                    assertEquals(0x17, brand.readVarInt())
+                    assertEquals("MC|Brand", brand.readProtocolString())
+                    assertEquals("CraftConnect", brand.readProtocolString())
+
                     output.write(frame(packet {
                         writeVarInt(0)
-                        writeInt(123_456)
+                        writeVarInt(123_456)
                     }, null))
                     output.flush()
                     val keepAlive = readPacket(input, null)
                     assertEquals(0, keepAlive.readVarInt())
-                    assertEquals(123_456, keepAlive.readInt())
+                    assertEquals(123_456, keepAlive.readVarInt())
                 }
             }
             val connection = LegacyOfflineMinecraftConnection(connectTimeoutMillis = 2_000)

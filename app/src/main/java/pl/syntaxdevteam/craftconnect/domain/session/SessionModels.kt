@@ -25,11 +25,27 @@ data class SessionSnapshot(
 
 sealed interface SessionError {
     val diagnosticCode: String
+    val serverMessage: String?
 
-    data class Network(override val diagnosticCode: String) : SessionError
-    data class Authentication(override val diagnosticCode: String) : SessionError
-    data class Protocol(override val diagnosticCode: String) : SessionError
-    data class Disconnected(override val diagnosticCode: String) : SessionError
+    data class Network(
+        override val diagnosticCode: String,
+        override val serverMessage: String? = null,
+    ) : SessionError
+
+    data class Authentication(
+        override val diagnosticCode: String,
+        override val serverMessage: String? = null,
+    ) : SessionError
+
+    data class Protocol(
+        override val diagnosticCode: String,
+        override val serverMessage: String? = null,
+    ) : SessionError
+
+    data class Disconnected(
+        override val diagnosticCode: String,
+        override val serverMessage: String? = null,
+    ) : SessionError
 }
 
 sealed interface SessionEvent {

@@ -57,6 +57,7 @@ class LegacyOfflineMinecraftConnection(
             })
             val session = awaitLoginSuccess()
             connectedSocket.soTimeout = 0
+            sendClientIdentity()
             readerJob = scope.launch { playLoop() }
             session
         } catch (failure: MinecraftConnectionException) {
@@ -102,8 +103,8 @@ class LegacyOfflineMinecraftConnection(
             val packetInput = readPacket(requireInput(), compressionThreshold)
             when (val packetId = packetInput.readVarInt()) {
                 LOGIN_DISCONNECT_PACKET -> {
-                    packetInput.readProtocolString(MAX_JSON_LENGTH)
-                    throw MinecraftConnectionException.Authentication("login_rejected")
+                    val reason = packetInput.readProtocolString(MAX_JSON_LENGTH).minecraftText()
+                    throw MinecraftConnectionException.Authentication("login_rejected", reason)
                 }
                 LOGIN_SUCCESS_PACKET -> return ConnectedSession(
                     protocolVersion = PROTOCOL_VERSION,
@@ -124,7 +125,7 @@ class LegacyOfflineMinecraftConnection(
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
-                    CLIENTBOUND_KEEP_ALIVE_PACKET -> respondToKeepAlive(packetInput.readInt())
+                    CLIENTBOUND_KEEP_ALIVE_PACKET -> respondToKeepAlive(packetInput.readVarInt())
                     CLIENTBOUND_POSITION_PACKET -> respondToPosition(packetInput)
                     CLIENTBOUND_DISCONNECT_PACKET -> {
                         packetInput.readProtocolString(MAX_JSON_LENGTH)
@@ -140,7 +141,23 @@ class LegacyOfflineMinecraftConnection(
     private fun respondToKeepAlive(id: Int) {
         sendPacket(packet {
             writeVarInt(SERVERBOUND_KEEP_ALIVE_PACKET)
-            writeInt(id)
+            writeVarInt(id)
+        })
+    }
+
+    private fun sendClientIdentity() {
+        sendPacket(packet {
+            writeVarInt(SERVERBOUND_CLIENT_SETTINGS_PACKET)
+            writeProtocolString("en_US")
+            writeByte(2)
+            writeByte(0)
+            writeBoolean(true)
+            writeByte(0x7F)
+        })
+        sendPacket(packet {
+            writeVarInt(SERVERBOUND_CUSTOM_PAYLOAD_PACKET)
+            writeProtocolString("MC|Brand")
+            writeProtocolString("CraftConnect")
         })
     }
 
@@ -237,6 +254,8 @@ class LegacyOfflineMinecraftConnection(
         const val SERVERBOUND_KEEP_ALIVE_PACKET = 0x00
         const val SERVERBOUND_CHAT_PACKET = 0x01
         const val SERVERBOUND_POSITION_LOOK_PACKET = 0x06
+        const val SERVERBOUND_CLIENT_SETTINGS_PACKET = 0x15
+        const val SERVERBOUND_CUSTOM_PAYLOAD_PACKET = 0x17
         const val RELATIVE_X = 0x01
         const val RELATIVE_Y = 0x02
         const val RELATIVE_Z = 0x04
@@ -244,4 +263,14 @@ class LegacyOfflineMinecraftConnection(
         const val RELATIVE_PITCH = 0x10
         val USERNAME = Regex("[A-Za-z0-9_]{3,16}")
     }
+}
+
+private fun String.minecraftText(): String {
+    val text = Regex("\"text\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"").find(this)?.groupValues?.get(1)
+        ?: return take(512)
+    return text
+        .replace("\\n", "\n")
+        .replace("\\\"", "\"")
+        .replace("\\\\", "\\")
+        .take(512)
 }

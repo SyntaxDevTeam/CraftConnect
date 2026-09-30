@@ -20,12 +20,10 @@ exception messages that could contain server or account data.
 
 ## Initial protocol scope
 
-The first concrete adapter is deliberately narrow: `LegacyOfflineMinecraftConnection`
-implements offline-mode login for Java protocol 47 (Minecraft 1.8.x), compression,
-keep-alive, the initial position response, chat and commands. It is useful directly on
-legacy servers and through protocol translators, but it is not an "auto/latest" client.
-Additional versions belong in separate adapters rather than conditional packet IDs in
-the legacy implementation.
+The default adapter, `ModernOfflineMinecraftConnection`, implements offline-mode login
+for Java protocol 775 (Minecraft 26.1), including the configuration state, compression,
+keep-alive, position acknowledgement, chat and commands. The protocol 47 adapter remains
+separate rather than mixing version-specific packet identifiers in one implementation.
 
 The first real networking milestone should implement only what the product needs:
 
