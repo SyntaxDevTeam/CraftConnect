@@ -50,11 +50,7 @@ class ModernOfflineMinecraftConnection(
         validateUsername(username)
         val endpoint = addressResolver.resolve(server.address)
         try {
-            val connectedSocket = Socket().apply {
-                tcpNoDelay = true
-                soTimeout = connectTimeoutMillis
-                connect(InetSocketAddress(endpoint.connectionHost, endpoint.connectionPort), connectTimeoutMillis)
-            }
+            val connectedSocket = openSocket(endpoint)
             socket = connectedSocket
             input = BufferedInputStream(connectedSocket.getInputStream())
             output = BufferedOutputStream(connectedSocket.getOutputStream())
@@ -82,6 +78,26 @@ class ModernOfflineMinecraftConnection(
     }
 
     override suspend fun disconnect() = withContext(Dispatchers.IO) { closeResources() }
+
+    private fun openSocket(endpoint: MinecraftServerEndpoint): Socket {
+        val remoteAddresses = endpoint.connectionAddresses
+            .map { InetSocketAddress(it, endpoint.connectionPort) }
+            .ifEmpty { listOf(InetSocketAddress(endpoint.connectionHost, endpoint.connectionPort)) }
+        var lastFailure: Exception? = null
+        remoteAddresses.forEach { remoteAddress ->
+            val candidate = Socket()
+            try {
+                candidate.tcpNoDelay = true
+                candidate.soTimeout = connectTimeoutMillis
+                candidate.connect(remoteAddress, connectTimeoutMillis)
+                return candidate
+            } catch (failure: Exception) {
+                runCatching { candidate.close() }
+                lastFailure = failure
+            }
+        }
+        throw checkNotNull(lastFailure) { "No server addresses available" }
+    }
 
     override suspend fun sendChat(message: String) = withContext(Dispatchers.IO) {
         require(message.length <= 256) { "Chat is limited to 256 characters" }

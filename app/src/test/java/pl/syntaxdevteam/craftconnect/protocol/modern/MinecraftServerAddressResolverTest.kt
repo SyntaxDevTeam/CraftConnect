@@ -1,5 +1,6 @@
 package pl.syntaxdevteam.craftconnect.protocol.modern
 
+import java.net.InetAddress
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -14,12 +15,14 @@ class MinecraftServerAddressResolverTest {
                 query = it
                 listOf(SrvTarget("minecraft.example.net.", 23_457, priority = 1, weight = 10))
             },
+            lookupAddresses = { listOf(InetAddress.getByAddress(byteArrayOf(10, 0, 0, 1))) },
         )
 
         val endpoint = resolver.resolve("play.example.com")
 
         assertEquals("_minecraft._tcp.play.example.com", query)
         assertEquals("minecraft.example.net", endpoint.connectionHost)
+        assertEquals(listOf("10.0.0.1"), endpoint.connectionAddresses.map(InetAddress::getHostAddress))
         assertEquals(23_457, endpoint.connectionPort)
         assertEquals("play.example.com", endpoint.handshakeHost)
         assertEquals(25_565, endpoint.handshakePort)
@@ -56,6 +59,7 @@ class MinecraftServerAddressResolverTest {
                     SrvTarget("backup.example.", 20_002, priority = 1, weight = 100),
                 )
             },
+            lookupAddresses = { emptyList() },
             random = Random(1),
         )
 

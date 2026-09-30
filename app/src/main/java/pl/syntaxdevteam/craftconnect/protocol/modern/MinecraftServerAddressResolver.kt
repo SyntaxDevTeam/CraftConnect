@@ -1,6 +1,9 @@
 package pl.syntaxdevteam.craftconnect.protocol.modern
 
+import java.net.InetAddress
 import kotlin.random.Random
+import org.xbill.DNS.AAAARecord
+import org.xbill.DNS.ARecord
 import org.xbill.DNS.Lookup
 import org.xbill.DNS.SRVRecord
 import org.xbill.DNS.Type
@@ -10,6 +13,7 @@ internal data class MinecraftServerEndpoint(
     val connectionPort: Int,
     val handshakeHost: String,
     val handshakePort: Int,
+    val connectionAddresses: List<InetAddress> = emptyList(),
 )
 
 internal data class SrvTarget(
@@ -22,6 +26,7 @@ internal data class SrvTarget(
 /** Resolves the SRV records used by Minecraft Java when an address has no explicit port. */
 internal class MinecraftServerAddressResolver(
     private val lookupSrv: (String) -> List<SrvTarget> = ::lookupMinecraftSrv,
+    private val lookupAddresses: (String) -> List<InetAddress> = ::lookupHostAddresses,
     private val random: Random = Random.Default,
 ) {
     fun resolve(address: String): MinecraftServerEndpoint {
@@ -30,11 +35,13 @@ internal class MinecraftServerAddressResolver(
 
         val targets = runCatching { lookupSrv("_minecraft._tcp.${parsed.host}") }.getOrDefault(emptyList())
         val selected = selectSrvTarget(targets) ?: return parsed.directEndpoint()
+        val connectionHost = selected.host.trimEnd('.')
         return MinecraftServerEndpoint(
-            connectionHost = selected.host.trimEnd('.'),
+            connectionHost = connectionHost,
             connectionPort = selected.port,
             handshakeHost = parsed.host,
             handshakePort = parsed.port,
+            connectionAddresses = runCatching { lookupAddresses(connectionHost) }.getOrDefault(emptyList()),
         )
     }
 
@@ -112,3 +119,8 @@ private fun lookupMinecraftSrv(name: String): List<SrvTarget> =
             weight = record.weight,
         )
     }
+
+private fun lookupHostAddresses(host: String): List<InetAddress> = buildList {
+    Lookup(host, Type.A).run().orEmpty().filterIsInstance<ARecord>().forEach { add(it.address) }
+    Lookup(host, Type.AAAA).run().orEmpty().filterIsInstance<AAAARecord>().forEach { add(it.address) }
+}
