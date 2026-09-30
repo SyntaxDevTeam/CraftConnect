@@ -20,7 +20,7 @@ The project requires an Android SDK. In Codex Cloud, the environment must provid
 - JDK 21 for the Gradle daemon toolchain
 - Android SDK command-line tools
 - platform-tools
-- Android platform 37
+- Android platform 36
 - Android build-tools 36.0.0
 
 Do not assume Android Studio is installed.
@@ -50,7 +50,7 @@ fi
 set +o pipefail
 yes | sdkmanager --licenses >/dev/null
 set -o pipefail
-sdkmanager --install "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 ```
 
@@ -66,7 +66,7 @@ export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
 set +o pipefail
 yes | sdkmanager --licenses >/dev/null
 set -o pipefail
-sdkmanager --install "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 
 ./gradlew --no-daemon :app:assembleDebug
@@ -79,7 +79,7 @@ The project currently targets:
 - Gradle 9.6.1
 - Kotlin 2.2.10
 - Compose BOM 2026.09.00
-- compileSdk / targetSdk 37
+- compileSdk / targetSdk 36
 - JDK 21 daemon toolchain
 
 ## Validation commands
