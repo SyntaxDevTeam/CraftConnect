@@ -75,9 +75,23 @@ class DefaultSessionManagerTest {
         assertTrue(failure is IllegalStateException)
     }
 
+    @Test
+    fun dialogSubmissionIsForwardedToTheConnection() = runTest {
+        val connection = FakeConnection()
+        val manager = DefaultSessionManager(connection)
+        manager.connect(server, "CraftyDev")
+
+        manager.submitDialog("authgatewayx:login_submit", mapOf("password" to "secret"))
+
+        assertEquals("authgatewayx:login_submit", connection.submittedAction)
+        assertEquals(mapOf("password" to "secret"), connection.submittedValues)
+    }
+
     private class FakeConnection(
         private val connectFailure: MinecraftConnectionException? = null,
     ) : MinecraftConnection {
+        var submittedAction: String? = null
+        var submittedValues: Map<String, String>? = null
         override suspend fun connect(server: ServerProfile, username: String): ConnectedSession {
             connectFailure?.let { throw it }
             return ConnectedSession(
@@ -90,6 +104,10 @@ class DefaultSessionManagerTest {
         override suspend fun disconnect() = Unit
         override suspend fun sendChat(message: String) = Unit
         override suspend fun sendCommand(command: String) = Unit
+        override suspend fun submitDialog(actionId: String, values: Map<String, String>) {
+            submittedAction = actionId
+            submittedValues = values
+        }
     }
 
     private companion object {

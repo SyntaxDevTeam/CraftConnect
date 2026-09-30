@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -13,11 +14,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import pl.syntaxdevteam.craftconnect.data.DemoRepository
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
+import pl.syntaxdevteam.craftconnect.domain.model.ServerDialogEvent
+import pl.syntaxdevteam.craftconnect.domain.model.ServerDialogRequest
 import pl.syntaxdevteam.craftconnect.domain.session.ConnectionState
 import pl.syntaxdevteam.craftconnect.domain.session.SessionManager
 import pl.syntaxdevteam.craftconnect.domain.session.SessionManagerFactory
 import pl.syntaxdevteam.craftconnect.ui.components.CraftBackground
 import pl.syntaxdevteam.craftconnect.ui.components.CraftBottomBar
+import pl.syntaxdevteam.craftconnect.ui.components.ServerDialogForm
 import pl.syntaxdevteam.craftconnect.ui.screens.ChatScreen
 import pl.syntaxdevteam.craftconnect.ui.screens.PlayersScreen
 import pl.syntaxdevteam.craftconnect.ui.screens.ServersScreen
@@ -38,7 +42,17 @@ fun CraftConnectApp(sessionManagerFactory: SessionManagerFactory) {
     var sessionManager by remember { mutableStateOf<SessionManager?>(null) }
     var connectionState by remember { mutableStateOf(ConnectionState.DISCONNECTED) }
     var connectionError by remember { mutableStateOf<String?>(null) }
+    var serverDialog by remember { mutableStateOf<ServerDialogRequest?>(null) }
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(sessionManager) {
+        sessionManager?.dialogEvents?.collect { event ->
+            serverDialog = when (event) {
+                is ServerDialogEvent.Show -> event.dialog
+                ServerDialogEvent.Clear -> null
+            }
+        }
+    }
 
     CraftBackground {
         Scaffold(
@@ -83,6 +97,20 @@ fun CraftConnectApp(sessionManagerFactory: SessionManagerFactory) {
                     AppDestination.Settings -> SettingsScreen()
                 }
             }
+        }
+
+        serverDialog?.let { dialog ->
+            ServerDialogForm(
+                dialog = dialog,
+                onSubmit = { actionId, values ->
+                    serverDialog = null
+                    coroutineScope.launch { sessionManager?.submitDialog(actionId, values) }
+                },
+                onCancel = { actionId ->
+                    serverDialog = null
+                    coroutineScope.launch { sessionManager?.submitDialog(actionId, emptyMap()) }
+                },
+            )
         }
     }
 }

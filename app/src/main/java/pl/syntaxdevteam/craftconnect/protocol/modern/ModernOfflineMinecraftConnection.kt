@@ -12,9 +12,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
+import pl.syntaxdevteam.craftconnect.domain.model.ServerDialogEvent
 import pl.syntaxdevteam.craftconnect.protocol.ConnectedSession
 import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnection
 import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnectionException
@@ -35,6 +38,8 @@ class ModernOfflineMinecraftConnection(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val writeLock = Any()
     private val open = AtomicBoolean(false)
+    private val mutableDialogEvents = MutableSharedFlow<ServerDialogEvent>(replay = 1)
+    override val dialogEvents = mutableDialogEvents.asSharedFlow()
     private var socket: Socket? = null
     private var input: BufferedInputStream? = null
     private var output: BufferedOutputStream? = null
@@ -118,6 +123,20 @@ class ModernOfflineMinecraftConnection(
             writeVarInt(SERVERBOUND_COMMAND)
             writeProtocolString(command.removePrefix("/"))
         })
+    }
+
+    override suspend fun submitDialog(actionId: String, values: Map<String, String>) = withContext(Dispatchers.IO) {
+        require(RESOURCE_LOCATION.matches(actionId)) { "Invalid dialog action identifier" }
+        require(values.size <= 32) { "Too many dialog fields" }
+        values.forEach { (key, value) ->
+            require(key.length <= 128 && value.length <= 4_096) { "Dialog field is too long" }
+        }
+        sendPacket(packet {
+            writeVarInt(SERVERBOUND_CUSTOM_CLICK_ACTION)
+            writeProtocolString(actionId)
+            write(encodeLengthPrefixedStringCompound(values))
+        })
+        mutableDialogEvents.emit(ServerDialogEvent.Clear)
     }
 
     private fun sendHandshake(endpoint: MinecraftServerEndpoint) = sendPacket(packet {
@@ -215,6 +234,10 @@ class ModernOfflineMinecraftConnection(
                     CLIENTBOUND_KEEP_ALIVE -> respondLong(SERVERBOUND_KEEP_ALIVE, packetInput.readLong())
                     CLIENTBOUND_POSITION -> acknowledgePosition(packetInput)
                     CLIENTBOUND_DISCONNECT -> closeResources()
+                    CLIENTBOUND_CLEAR_DIALOG -> mutableDialogEvents.tryEmit(ServerDialogEvent.Clear)
+                    CLIENTBOUND_SHOW_DIALOG -> runCatching { packetInput.readServerDialog() }
+                        .getOrNull()
+                        ?.let { mutableDialogEvents.tryEmit(ServerDialogEvent.Show(it)) }
                 }
             }
         } catch (_: Exception) {
@@ -283,6 +306,7 @@ class ModernOfflineMinecraftConnection(
         z = 0.0
         yaw = 0f
         pitch = 0f
+        mutableDialogEvents.tryEmit(ServerDialogEvent.Clear)
     }
 
     private fun requireInput() = checkNotNull(input) { "Connection input is unavailable" }
@@ -319,17 +343,21 @@ class ModernOfflineMinecraftConnection(
         const val CLIENTBOUND_KEEP_ALIVE = 0x2C
         const val CLIENTBOUND_DISCONNECT = 0x20
         const val CLIENTBOUND_POSITION = 0x48
+        const val CLIENTBOUND_CLEAR_DIALOG = 0x8B
+        const val CLIENTBOUND_SHOW_DIALOG = 0x8C
         const val SERVERBOUND_TELEPORT_CONFIRM = 0x00
         const val SERVERBOUND_COMMAND = 0x07
         const val SERVERBOUND_CHAT = 0x09
         const val SERVERBOUND_KEEP_ALIVE = 0x1C
         const val SERVERBOUND_POSITION_LOOK = 0x1F
+        const val SERVERBOUND_CUSTOM_CLICK_ACTION = 0x44
         const val RELATIVE_X = 0x01
         const val RELATIVE_Y = 0x02
         const val RELATIVE_Z = 0x04
         const val RELATIVE_YAW = 0x08
         const val RELATIVE_PITCH = 0x10
         val USERNAME = Regex("[A-Za-z0-9_]{3,16}")
+        val RESOURCE_LOCATION = Regex("[a-z0-9_.-]+:[a-z0-9_./-]+")
     }
 }
 

@@ -3,6 +3,7 @@ package pl.syntaxdevteam.craftconnect.data.session
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
+import pl.syntaxdevteam.craftconnect.domain.model.ServerDialogEvent
 import pl.syntaxdevteam.craftconnect.domain.session.ConnectionState
 import pl.syntaxdevteam.craftconnect.domain.session.SessionError
 import pl.syntaxdevteam.craftconnect.domain.session.SessionEvent
@@ -28,6 +30,7 @@ class DefaultSessionManager(
 
     override val session: StateFlow<SessionSnapshot> = mutableSession.asStateFlow()
     override val events: SharedFlow<SessionEvent> = mutableEvents.asSharedFlow()
+    override val dialogEvents: Flow<ServerDialogEvent> = connection.dialogEvents
 
     override suspend fun connect(server: ServerProfile, username: String) = operationMutex.withLock {
         if (session.value.connectionState != ConnectionState.DISCONNECTED &&
@@ -82,6 +85,11 @@ class DefaultSessionManager(
     override suspend fun sendCommand(command: String) {
         requireConnected()
         connection.sendCommand(command)
+    }
+
+    override suspend fun submitDialog(actionId: String, values: Map<String, String>) {
+        requireConnected()
+        connection.submitDialog(actionId, values)
     }
 
     private fun requireConnected() {

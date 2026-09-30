@@ -58,4 +58,8 @@
     <string name="saved_servers">Saved servers</string>
     <string name="saved_servers_summary">Import, export or clear servers</string>
     <string name="prototype_footer">CraftConnect 0.1.0 · Offline protocol preview</string>
+    <string name="dialog_fields_required">Fill in all fields.</string>
+    <string name="dialog_passwords_mismatch">The passwords do not match.</string>
+    <string name="server_dialog">Server dialog</string>
+    <string name="confirm">Confirm</string>
 </resources>
