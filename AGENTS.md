@@ -37,7 +37,7 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
 if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-  CMDLINE_TOOLS_URL="$(curl -fsSL https://developer.android.com/studio | grep -Eo 'https://dl.google.com/android/repository/commandlinetools-linux-[0-9]+_latest.zip' | head -n 1)"
+  CMDLINE_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip"
   TMP_DIR="$(mktemp -d)"
   curl -fsSL "$CMDLINE_TOOLS_URL" -o "$TMP_DIR/cmdline-tools.zip"
   unzip -q "$TMP_DIR/cmdline-tools.zip" -d "$TMP_DIR/unzipped"
