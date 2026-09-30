@@ -78,7 +78,7 @@ The project currently targets:
 - Android Gradle Plugin 9.4.0
 - Gradle 9.6.1
 - Kotlin 2.2.10
-- Compose BOM 2026.09.00
+- Compose BOM 2025.06.01
 - compileSdk / targetSdk 36
 - JDK 21 daemon toolchain
 

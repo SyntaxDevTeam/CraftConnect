@@ -30,7 +30,7 @@ Networking is intentionally not implemented yet. The current interface uses demo
 - Android Gradle Plugin 9.4.0
 - Gradle 9.6.1
 - Kotlin 2.2.10
-- Compose BOM 2026.09.00
+- Compose BOM 2025.06.01
 - compileSdk / targetSdk 36
 - minSdk 26
 - JDK 21 for CI/Gradle daemon
