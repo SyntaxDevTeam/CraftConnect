@@ -2,24 +2,30 @@ package pl.syntaxdevteam.craftconnect.protocol
 
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
 
-sealed interface ConnectionState {
-    data object Disconnected : ConnectionState
-    data class Connecting(val server: ServerProfile) : ConnectionState
-    data class Connected(val server: ServerProfile, val protocolVersion: Int) : ConnectionState
-    data class Failed(val reason: String) : ConnectionState
-}
+data class ConnectedSession(
+    val protocolVersion: Int,
+    val username: String,
+    val uuid: String,
+)
 
 /**
- * Stable boundary between Android presentation code and the future headless
- * Minecraft protocol implementation.
- *
- * Compose screens must never depend directly on packet classes.
+ * Packet-independent boundary implemented by a version-aware protocol adapter.
+ * Presentation code communicates through SessionManager instead of this type.
  */
 interface MinecraftConnection {
-    val state: ConnectionState
-
-    suspend fun connect(server: ServerProfile)
+    suspend fun connect(server: ServerProfile, username: String): ConnectedSession
     suspend fun disconnect()
     suspend fun sendChat(message: String)
     suspend fun sendCommand(command: String)
+}
+
+sealed class MinecraftConnectionException(
+    val diagnosticCode: String,
+    val serverMessage: String? = null,
+    cause: Throwable? = null,
+) : Exception(diagnosticCode, cause) {
+    class Network(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, cause = cause)
+    class Authentication(code: String, serverMessage: String? = null) :
+        MinecraftConnectionException(code, serverMessage)
+    class Protocol(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, cause = cause)
 }

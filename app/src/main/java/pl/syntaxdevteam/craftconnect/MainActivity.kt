@@ -3,6 +3,7 @@ package pl.syntaxdevteam.craftconnect
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import pl.syntaxdevteam.craftconnect.data.session.DefaultSessionManagerFactory
 import pl.syntaxdevteam.craftconnect.ui.theme.CraftConnectTheme
 
 class MainActivity : ComponentActivity() {
@@ -10,7 +11,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             CraftConnectTheme {
-                CraftConnectApp()
+                CraftConnectApp(DefaultSessionManagerFactory())
             }
         }
     }

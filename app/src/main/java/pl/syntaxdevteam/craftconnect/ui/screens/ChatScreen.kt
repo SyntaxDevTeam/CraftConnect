@@ -47,7 +47,7 @@ import pl.syntaxdevteam.craftconnect.ui.theme.TextSecondary
 import pl.syntaxdevteam.craftconnect.ui.theme.Warning
 
 @Composable
-fun ChatScreen(server: ServerProfile) {
+fun ChatScreen(server: ServerProfile, onSend: (String) -> Unit = {}) {
     val messages = remember { mutableStateListOf<ChatMessage>().apply { addAll(DemoRepository.messages) } }
     var input by remember { mutableStateOf("") }
 
@@ -98,6 +98,7 @@ fun ChatScreen(server: ServerProfile) {
                 onClick = {
                     val value = input.trim()
                     if (value.isNotEmpty()) {
+                        onSend(value)
                         messages += ChatMessage("You", value, "now")
                         input = ""
                     }

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">CraftConnect</string>
+    <string name="app_logo">CraftConnect logo</string>
     <string name="brand_tagline">LIGHTWEIGHT · FAST · CONNECTED</string>
     <string name="nav_servers">Servers</string>
     <string name="nav_chat">Chat</string>
@@ -12,6 +13,13 @@
     <string name="all">All</string>
     <string name="favorites">Favorites</string>
     <string name="connect">Connect</string>
+    <string name="quick_connect">Offline-mode connection</string>
+    <string name="server_address">Server address</string>
+    <string name="offline_username">Offline username</string>
+    <string name="cancel">Cancel</string>
+    <string name="modern_protocol_notice">Uses Minecraft Java 26.1 protocol (775). The server must allow offline-mode logins.</string>
+    <string name="connecting">Connecting…</string>
+    <string name="connection_failed">Connection failed. Check the address, server mode, protocol compatibility and username.</string>
     <string name="connected">Connected</string>
     <string name="online">Online</string>
     <string name="offline">Offline</string>
@@ -49,5 +57,5 @@
     <string name="manage_account_summary">Local profile</string>
     <string name="saved_servers">Saved servers</string>
     <string name="saved_servers_summary">Import, export or clear servers</string>
-    <string name="prototype_footer">CraftConnect 0.1.0 · UI skeleton</string>
+    <string name="prototype_footer">CraftConnect 0.1.0 · Offline protocol preview</string>
 </resources>
