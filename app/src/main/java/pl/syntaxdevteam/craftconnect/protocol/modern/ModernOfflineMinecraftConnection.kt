@@ -31,6 +31,7 @@ import pl.syntaxdevteam.craftconnect.protocol.legacy.writeVarInt
 class ModernOfflineMinecraftConnection(
     private val connectTimeoutMillis: Int = 15_000,
 ) : MinecraftConnection {
+    private val addressResolver = MinecraftServerAddressResolver()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val writeLock = Any()
     private val open = AtomicBoolean(false)
@@ -47,12 +48,12 @@ class ModernOfflineMinecraftConnection(
 
     override suspend fun connect(server: ServerProfile, username: String): ConnectedSession = withContext(Dispatchers.IO) {
         validateUsername(username)
-        val endpoint = Endpoint.parse(server.address)
+        val endpoint = addressResolver.resolve(server.address)
         try {
             val connectedSocket = Socket().apply {
                 tcpNoDelay = true
                 soTimeout = connectTimeoutMillis
-                connect(InetSocketAddress(endpoint.host, endpoint.port), connectTimeoutMillis)
+                connect(InetSocketAddress(endpoint.connectionHost, endpoint.connectionPort), connectTimeoutMillis)
             }
             socket = connectedSocket
             input = BufferedInputStream(connectedSocket.getInputStream())
@@ -103,11 +104,11 @@ class ModernOfflineMinecraftConnection(
         })
     }
 
-    private fun sendHandshake(endpoint: Endpoint) = sendPacket(packet {
+    private fun sendHandshake(endpoint: MinecraftServerEndpoint) = sendPacket(packet {
         writeVarInt(HANDSHAKE)
         writeVarInt(PROTOCOL_VERSION)
-        writeProtocolString(endpoint.host)
-        writeShort(endpoint.port)
+        writeProtocolString(endpoint.handshakeHost)
+        writeShort(endpoint.handshakePort)
         writeVarInt(LOGIN_STATE)
     })
 
@@ -275,23 +276,8 @@ class ModernOfflineMinecraftConnection(
         if (!USERNAME.matches(username)) throw MinecraftConnectionException.Authentication("invalid_offline_username")
     }
 
-    private data class Endpoint(val host: String, val port: Int) {
-        companion object {
-            fun parse(address: String): Endpoint {
-                val value = address.trim()
-                val separator = value.lastIndexOf(':')
-                val explicitPort = separator > 0 && value.indexOf(':') == separator
-                val host = if (explicitPort) value.substring(0, separator) else value
-                val port = if (explicitPort) value.substring(separator + 1).toIntOrNull() else DEFAULT_PORT
-                require(host.isNotBlank() && port != null && port in 1..65_535) { "Invalid server address" }
-                return Endpoint(host, port)
-            }
-        }
-    }
-
     private companion object {
         const val PROTOCOL_VERSION = 775
-        const val DEFAULT_PORT = 25_565
         const val MAX_TEXT_LENGTH = 262_144
         const val HANDSHAKE = 0x00
         const val LOGIN_STATE = 2

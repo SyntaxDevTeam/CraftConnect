@@ -36,6 +36,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.dnsjava)
 
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
