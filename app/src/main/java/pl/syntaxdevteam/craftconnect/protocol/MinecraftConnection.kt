@@ -24,8 +24,9 @@ sealed class MinecraftConnectionException(
     val serverMessage: String? = null,
     cause: Throwable? = null,
 ) : Exception(diagnosticCode, cause) {
-    class Network(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, cause = cause)
+    class Network(code: String, cause: Throwable? = null) :
+        MinecraftConnectionException(code, cause?.localizedMessage, cause)
     class Authentication(code: String, serverMessage: String? = null) :
         MinecraftConnectionException(code, serverMessage)
-    class Protocol(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, cause = cause)
+    class Protocol(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, code, cause)
 }
