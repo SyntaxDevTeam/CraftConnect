@@ -5,6 +5,7 @@ import java.io.ByteArrayInputStream
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.charset.StandardCharsets
@@ -15,6 +16,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -51,6 +54,8 @@ class ModernOfflineMinecraftConnection(
     private val open = AtomicBoolean(false)
     private val mutableDialogEvents = MutableSharedFlow<ServerDialogEvent>(replay = 1)
     override val dialogEvents = mutableDialogEvents.asSharedFlow()
+    private val mutableConnectionFailures = MutableStateFlow<MinecraftConnectionException?>(null)
+    override val connectionFailures = mutableConnectionFailures.filterNotNull()
     private var socket: Socket? = null
     private var input: BufferedInputStream? = null
     private var output: BufferedOutputStream? = null
@@ -63,6 +68,7 @@ class ModernOfflineMinecraftConnection(
     private var pitch = 0f
 
     override suspend fun connect(server: ServerProfile, username: String): ConnectedSession = withContext(Dispatchers.IO) {
+        mutableConnectionFailures.value = null
         version = server.minecraftVersion
         connectionStage = "resolve"
         packetTrace.clear()
@@ -303,15 +309,26 @@ class ModernOfflineMinecraftConnection(
                     }
                     keepAliveId -> respondLong(SERVERBOUND_KEEP_ALIVE, packetInput.readLong())
                     positionId -> acknowledgePosition(packetInput)
-                    CLIENTBOUND_DISCONNECT -> closeResources()
+                    CLIENTBOUND_DISCONNECT -> closeResources(
+                        MinecraftConnectionException.Authentication(
+                            "play_disconnected_p${version.protocol}" + packetTrace.suffix(),
+                            packetInput.readAnonymousNbt().chatText().take(512),
+                        ),
+                    )
                     clearDialogId -> mutableDialogEvents.tryEmit(ServerDialogEvent.Clear)
                     showDialogId -> runCatching { packetInput.readServerDialog() }
                         .getOrNull()
                         ?.let { mutableDialogEvents.tryEmit(ServerDialogEvent.Show(it)) }
                 }
             }
-        } catch (_: Exception) {
-            closeResources()
+        } catch (failure: Exception) {
+            if (open.get()) closeResources(
+                if (failure is IOException) MinecraftConnectionException.Network(
+                    "connection_play_closed_p${version.protocol}" + packetTrace.suffix(), failure,
+                ) else MinecraftConnectionException.Protocol(
+                    "connection_play_failed_p${version.protocol}" + packetTrace.suffix(), failure,
+                ),
+            )
         }
     }
 
@@ -384,15 +401,25 @@ class ModernOfflineMinecraftConnection(
     private fun respondInt(packetId: Int, value: Int) = sendPacket(packet { writeVarInt(packetId); writeInt(value) })
 
     private fun sendPacket(payload: ByteArray) {
-        check(open.get()) { "Connection is not open" }
         synchronized(writeLock) {
-            packetTrace.record("o", ByteArrayInputStream(payload).readVarInt())
-            requireOutput().apply { write(frame(payload, compressionThreshold)); flush() }
+            val stream = output
+            if (!open.get() || stream == null) {
+                throw (mutableConnectionFailures.value
+                    ?: MinecraftConnectionException.Network("connection_closed_before_send"))
+            }
+            try {
+                packetTrace.record("o", ByteArrayInputStream(payload).readVarInt())
+                stream.write(frame(payload, compressionThreshold))
+                stream.flush()
+            } catch (failure: IOException) {
+                throw MinecraftConnectionException.Network("connection_write_failed", failure)
+            }
         }
     }
 
-    private fun closeResources() {
+    private fun closeResources(failure: MinecraftConnectionException? = null) {
         if (!open.getAndSet(false)) return
+        failure?.let { mutableConnectionFailures.value = it }
         visibilityCommands.reset()
         commonRequests.clear()
         readerJob?.cancel()
@@ -485,4 +512,5 @@ private fun java.io.DataOutputStream.writeUuid(uuid: UUID) { writeLong(uuid.most
 private fun String.minecraftText(): String =
     (Regex("\"text\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"").find(this)?.groupValues?.get(1) ?: take(512))
         .replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\").take(512)
+
 

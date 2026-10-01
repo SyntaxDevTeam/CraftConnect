@@ -3,6 +3,9 @@ package pl.syntaxdevteam.craftconnect.data.session
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -67,12 +70,13 @@ class DefaultSessionManagerTest {
     }
 
     @Test
-    fun sendingRequiresConnectedSession() = runTest {
+    fun staleActionsAreIgnoredAfterDisconnection() = runTest {
         val manager = DefaultSessionManager(FakeConnection())
 
-        val failure = runCatching { manager.sendChat("hello") }.exceptionOrNull()
-
-        assertTrue(failure is IllegalStateException)
+        manager.sendChat("hello")
+        manager.sendCommand("/login secret")
+        manager.submitDialog("authgatewayx:login_submit", emptyMap())
+        assertEquals(ConnectionState.DISCONNECTED, manager.session.value.connectionState)
     }
 
     @Test
@@ -87,13 +91,71 @@ class DefaultSessionManagerTest {
         assertEquals(mapOf("password" to "secret"), connection.submittedValues)
     }
 
+    @Test
+    fun closedSocketDuringCommandBecomesSessionFailure() = runTest {
+        val connection = FakeConnection(sendFailure = MinecraftConnectionException.Network("connection_closed_before_send"))
+        val manager = DefaultSessionManager(connection, observerScope = backgroundScope)
+        manager.connect(server, "CraftyDev")
+
+        manager.sendCommand("/login secret")
+
+        assertEquals(ConnectionState.FAILED, manager.session.value.connectionState)
+        assertEquals("connection_closed_before_send", manager.session.value.lastError?.diagnosticCode)
+        assertTrue(connection.disconnected)
+        manager.sendCommand("/login secret")
+        assertEquals(1, connection.sentCommands)
+    }
+
+    @Test
+    fun receiveDisconnectUpdatesSessionWithoutSending() = runTest {
+        val connection = FakeConnection()
+        val manager = DefaultSessionManager(connection, observerScope = backgroundScope)
+        manager.connect(server, "CraftyDev")
+        val failed = async(start = CoroutineStart.UNDISPATCHED) {
+            manager.session.first { it.connectionState == ConnectionState.FAILED }
+        }
+
+        connection.failure.value = MinecraftConnectionException.Authentication("play_disconnected", "Server restarting")
+
+        assertEquals("Server restarting", failed.await().lastError?.serverMessage)
+    }
+
+    @Test
+    fun immediateReceiveFailureIsReplayedAfterConnect() = runTest {
+        val connection = FakeConnection(receiveFailure = MinecraftConnectionException.Network("connection_play_closed"))
+        val manager = DefaultSessionManager(connection, observerScope = backgroundScope)
+        manager.connect(server, "CraftyDev")
+
+        val failed = manager.session.first { it.connectionState == ConnectionState.FAILED }
+
+        assertEquals("connection_play_closed", failed.lastError?.diagnosticCode)
+    }
+
+    @Test
+    fun sendCancellationStillPropagates() = runTest {
+        val manager = DefaultSessionManager(
+            FakeConnection(sendFailure = CancellationException("cancelled")), observerScope = backgroundScope,
+        )
+        manager.connect(server, "CraftyDev")
+
+        assertTrue(runCatching { manager.sendCommand("/help") }.exceptionOrNull() is CancellationException)
+        assertEquals(ConnectionState.CONNECTED, manager.session.value.connectionState)
+    }
+
     private class FakeConnection(
         private val connectFailure: MinecraftConnectionException? = null,
+        private val sendFailure: Exception? = null,
+        private val receiveFailure: MinecraftConnectionException? = null,
     ) : MinecraftConnection {
+        val failure = MutableStateFlow<MinecraftConnectionException?>(null)
+        override val connectionFailures = failure.filterNotNull()
+        var disconnected = false
+        var sentCommands = 0
         var submittedAction: String? = null
         var submittedValues: Map<String, String>? = null
         override suspend fun connect(server: ServerProfile, username: String): ConnectedSession {
             connectFailure?.let { throw it }
+            failure.value = receiveFailure
             return ConnectedSession(
                 protocolVersion = 47,
                 username = username,
@@ -101,9 +163,12 @@ class DefaultSessionManagerTest {
             )
         }
 
-        override suspend fun disconnect() = Unit
+        override suspend fun disconnect() { disconnected = true }
         override suspend fun sendChat(message: String) = Unit
-        override suspend fun sendCommand(command: String) = Unit
+        override suspend fun sendCommand(command: String) {
+            sentCommands++
+            sendFailure?.let { throw it }
+        }
         override suspend fun submitDialog(actionId: String, values: Map<String, String>) {
             submittedAction = actionId
             submittedValues = values
@@ -114,3 +179,4 @@ class DefaultSessionManagerTest {
         val server = ServerProfile("test", "Test", "localhost", true, 0, 20, 1)
     }
 }
+

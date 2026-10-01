@@ -4,6 +4,9 @@ import pl.syntaxdevteam.craftconnect.bridge.protocol.AuthenticationBridgeProtoco
 import java.net.ServerSocket
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import org.junit.Assert.assertTrue
+import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnectionException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -177,6 +180,10 @@ class ModernOfflineMinecraftConnectionTest {
                     assertEquals("gamemode spectator", command.readProtocolString())
                     output.write(frame(packet { writeVarInt(if (latest) 0x27 else 0x26); writeByte(3); writeFloat(3f) }, compressionThreshold))
                     output.flush()
+                    output.write(frame(packet {
+                        writeVarInt(0x20); writeByte(8); writeUTF("Server restarting")
+                    }, compressionThreshold))
+                    output.flush()
 
                 }
             }
@@ -191,9 +198,17 @@ class ModernOfflineMinecraftConnectionTest {
             assertEquals("OfflineUser", session.username)
             withTimeout(5_000) { server.await() }
             assertEquals("Welcome before UI", connection.chatMessages.value.first().content)
+            val failure = withTimeout(5_000) { connection.connectionFailures.first() }
+            assertEquals("Server restarting", failure.serverMessage)
+            assertTrue(failure.diagnosticCode.startsWith("play_disconnected_p${version.protocol}"))
+            // A command queued just before disconnect reports the original reason.
+            val sendFailure = runCatching { connection.sendCommand("/help") }.exceptionOrNull()
+            assertTrue(sendFailure is MinecraftConnectionException)
+            assertEquals("Server restarting", (sendFailure as MinecraftConnectionException).serverMessage)
             connection.disconnect()
         }
     }
 }
+
 
 

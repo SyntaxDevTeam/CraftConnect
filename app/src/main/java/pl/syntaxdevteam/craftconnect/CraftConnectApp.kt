@@ -59,6 +59,20 @@ fun CraftConnectApp(
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(sessionManager) {
+        sessionManager?.session?.collect { snapshot ->
+            connectionState = snapshot.connectionState
+            connectionError = snapshot.lastError?.let { error ->
+                listOfNotNull(error.serverMessage, error.diagnosticCode).distinct().joinToString("\n")
+            }
+            if (snapshot.connectionState != ConnectionState.CONNECTED) serverDialog = null
+            if (snapshot.connectionState == ConnectionState.FAILED) {
+                activeServer = activeServer?.copy(online = false)
+                destination = AppDestination.Servers
+            }
+        }
+    }
+
+    LaunchedEffect(sessionManager) {
         sessionManager?.dialogEvents?.collect { event ->
             serverDialog = when (event) {
                 is ServerDialogEvent.Show -> event.dialog
@@ -143,5 +157,6 @@ fun CraftConnectApp(
         }
     }
 }
+
 
 

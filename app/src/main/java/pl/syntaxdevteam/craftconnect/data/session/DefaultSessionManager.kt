@@ -1,6 +1,12 @@
 package pl.syntaxdevteam.craftconnect.data.session
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.firstOrNull
+import java.io.IOException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.Flow
@@ -23,8 +29,10 @@ import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnectionException
 class DefaultSessionManager(
     private val connection: MinecraftConnection,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val observerScope: CoroutineScope = CoroutineScope(Dispatchers.Default),
 ) : SessionManager {
     private val operationMutex = Mutex()
+    private var failureObserver: Job? = null
     private val mutableSession = MutableStateFlow(SessionSnapshot())
     private val mutableEvents = MutableSharedFlow<SessionEvent>(extraBufferCapacity = 16)
 
@@ -40,6 +48,7 @@ class DefaultSessionManager(
             return@withLock
         }
 
+        failureObserver?.cancel()
         update(SessionSnapshot(connectionState = ConnectionState.CONNECTING, server = server))
         try {
             val connected = connection.connect(server, username)
@@ -53,6 +62,12 @@ class DefaultSessionManager(
                     lastError = null,
                 ),
             )
+            failureObserver = observerScope.launch {
+                val failure = connection.connectionFailures.firstOrNull() ?: return@launch
+                operationMutex.withLock {
+                    if (session.value.connectionState == ConnectionState.CONNECTED) fail(failure.toSessionError())
+                }
+            }
         } catch (cancelled: CancellationException) {
             update(SessionSnapshot())
             throw cancelled
@@ -66,6 +81,8 @@ class DefaultSessionManager(
     override suspend fun disconnect() = operationMutex.withLock {
         if (session.value.connectionState == ConnectionState.DISCONNECTED) return@withLock
 
+        failureObserver?.cancel()
+        failureObserver = null
         var error: SessionError? = null
         try {
             connection.disconnect()
@@ -78,25 +95,40 @@ class DefaultSessionManager(
         mutableEvents.emit(SessionEvent.ConnectionClosed(error))
     }
 
-    override suspend fun sendChat(message: String) {
-        requireConnected()
-        connection.sendChat(message)
-    }
+    override suspend fun sendChat(message: String) = send { connection.sendChat(message) }
 
-    override suspend fun sendCommand(command: String) {
-        requireConnected()
-        connection.sendCommand(command)
-    }
+    override suspend fun sendCommand(command: String) = send { connection.sendCommand(command) }
 
-    override suspend fun submitDialog(actionId: String, values: Map<String, String>) {
-        requireConnected()
-        connection.submitDialog(actionId, values)
-    }
+    override suspend fun submitDialog(actionId: String, values: Map<String, String>) =
+        send { connection.submitDialog(actionId, values) }
 
-    private fun requireConnected() {
-        check(session.value.connectionState == ConnectionState.CONNECTED) {
-            "A Minecraft session must be connected before sending data"
+    private suspend fun send(action: suspend () -> Unit) = operationMutex.withLock {
+        // A queued UI action may resume after the receive loop has closed the socket.
+        if (session.value.connectionState != ConnectionState.CONNECTED) return@withLock
+        try {
+            action()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: MinecraftConnectionException) {
+            handleSendFailure(failure.toSessionError())
+        } catch (_: IOException) {
+            handleSendFailure(SessionError.Network("connection_write_failed"))
+        } catch (_: IllegalStateException) {
+            handleSendFailure(SessionError.Network("connection_closed_before_send"))
         }
+    }
+
+    private suspend fun handleSendFailure(error: SessionError) {
+        failureObserver?.cancel()
+        failureObserver = null
+        try {
+            connection.disconnect()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Preserve the original write failure instead of replacing it with cleanup failure.
+        }
+        fail(error)
     }
 
     private suspend fun fail(error: SessionError) {
@@ -118,4 +150,5 @@ private fun MinecraftConnectionException.toSessionError(): SessionError = when (
     is MinecraftConnectionException.Authentication -> SessionError.Authentication(diagnosticCode, serverMessage)
     is MinecraftConnectionException.Protocol -> SessionError.Protocol(diagnosticCode, serverMessage)
 }
+
 

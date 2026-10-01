@@ -22,6 +22,10 @@ interface MinecraftConnection {
     val dialogEvents: Flow<ServerDialogEvent>
         get() = emptyFlow()
 
+    /** Terminal receive failure, replayed so an immediate disconnect cannot be missed. */
+    val connectionFailures: Flow<MinecraftConnectionException>
+        get() = emptyFlow()
+
     suspend fun connect(server: ServerProfile, username: String): ConnectedSession
     suspend fun disconnect()
     suspend fun sendChat(message: String)
@@ -42,4 +46,5 @@ sealed class MinecraftConnectionException(
         MinecraftConnectionException(code, serverMessage)
     class Protocol(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, code, cause)
 }
+
 
