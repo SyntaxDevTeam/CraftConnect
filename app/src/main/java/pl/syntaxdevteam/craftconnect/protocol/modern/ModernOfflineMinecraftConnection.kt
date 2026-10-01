@@ -1,6 +1,7 @@
 package pl.syntaxdevteam.craftconnect.protocol.modern
 
 import pl.syntaxdevteam.craftconnect.domain.model.MinecraftVersion
+import java.io.ByteArrayInputStream
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
@@ -33,12 +34,14 @@ import pl.syntaxdevteam.craftconnect.protocol.legacy.readVarInt
 import pl.syntaxdevteam.craftconnect.protocol.legacy.writeProtocolString
 import pl.syntaxdevteam.craftconnect.protocol.legacy.writeVarInt
 
-/** Headless offline-mode adapter for Minecraft Java 26.1 (protocol 775). */
+/** Headless offline-mode adapter for Minecraft Java 26.1–26.3. */
 class ModernOfflineMinecraftConnection(
     private val connectTimeoutMillis: Int = 15_000,
 ) : MinecraftConnection {
     private var version = MinecraftVersion.JAVA_26_1
     private var connectionStage = "resolve"
+    private val packetTrace = PacketTrace()
+    private val commonRequests = CommonServerRequests(::sendPacket)
     private val addressResolver = MinecraftServerAddressResolver()
     private val chatHistory = pl.syntaxdevteam.craftconnect.protocol.chat.ChatHistory()
     override val chatMessages = chatHistory.messages
@@ -62,10 +65,12 @@ class ModernOfflineMinecraftConnection(
     override suspend fun connect(server: ServerProfile, username: String): ConnectedSession = withContext(Dispatchers.IO) {
         version = server.minecraftVersion
         connectionStage = "resolve"
+        packetTrace.clear()
+        commonRequests.clear()
         chatHistory.clear()
         validateUsername(username)
-        val endpoint = addressResolver.resolve(server.address)
         try {
+            val endpoint = addressResolver.resolve(server.address)
             connectionStage = "tcp"
             val connectedSocket = openSocket(endpoint)
             socket = connectedSocket
@@ -78,9 +83,11 @@ class ModernOfflineMinecraftConnection(
             sendLoginStart(username)
             val session = awaitLoginSuccess()
             sendPacket(packet { writeVarInt(LOGIN_ACKNOWLEDGED) })
-            sendClientSettings(CONFIGURATION_CLIENT_SETTINGS)
             connectionStage = "configuration"
+            sendClientSettings(CONFIGURATION_CLIENT_SETTINGS)
+            sendClientBrand()
             awaitConfiguration()
+            connectionStage = "play"
             connectedSocket.soTimeout = 0
             readerJob = scope.launch { playLoop() }
             session
@@ -89,10 +96,10 @@ class ModernOfflineMinecraftConnection(
             throw failure
         } catch (failure: ProtocolCodecException) {
             closeResources()
-            throw MinecraftConnectionException.Protocol(failure.code, failure)
+            throw MinecraftConnectionException.Protocol(failure.code + "_${connectionStage}_p${version.protocol}" + packetTrace.suffix(), failure)
         } catch (failure: Exception) {
             closeResources()
-            throw MinecraftConnectionException.Network("connection_${connectionStage}_failed_p${version.protocol}", failure)
+            throw MinecraftConnectionException.Network("connection_${connectionStage}_failed_p${version.protocol}" + packetTrace.suffix(), failure)
         }
     }
 
@@ -183,7 +190,7 @@ class ModernOfflineMinecraftConnection(
     private fun awaitLoginSuccess(): ConnectedSession {
         while (open.get()) {
             val packetInput = readPacket(requireInput(), compressionThreshold)
-            when (val packetId = packetInput.readVarInt()) {
+            when (val packetId = packetInput.readVarInt().also { packetTrace.record("i", it) }) {
                 LOGIN_DISCONNECT -> throw MinecraftConnectionException.Authentication(
                     "login_rejected",
                     packetInput.readProtocolString(MAX_TEXT_LENGTH).minecraftText(),
@@ -203,6 +210,7 @@ class ModernOfflineMinecraftConnection(
                     if (it < 0) throw MinecraftConnectionException.Protocol("invalid_compression_threshold")
                 }
                 LOGIN_PLUGIN_REQUEST -> rejectLoginPlugin(packetInput)
+                0x05 -> commonRequests.replyCookie(packetInput, 0x04)
                 0x01 -> throw MinecraftConnectionException.Authentication("online_mode_requires_microsoft")
                 else -> throw MinecraftConnectionException.Protocol("unexpected_login_packet_$packetId")
             }
@@ -222,7 +230,11 @@ class ModernOfflineMinecraftConnection(
     private fun awaitConfiguration() {
         while (open.get()) {
             val packetInput = readPacket(requireInput(), compressionThreshold)
-            when (packetInput.readVarInt().let { if (version == MinecraftVersion.JAVA_26_3 && it >= 10) it - 1 else it }) {
+            when (packetInput.readVarInt().also { packetTrace.record("i", it) }
+                .let { if (version == MinecraftVersion.JAVA_26_3 && it >= 10) it - 1 else it }) {
+                0x00 -> commonRequests.replyCookie(packetInput, 0x01)
+                0x09 -> commonRequests.replyResourcePack(packetInput, 0x06)
+                0x0A -> commonRequests.storeCookie(packetInput)
                 CONFIGURATION_DISCONNECT -> throw MinecraftConnectionException.Authentication(
                     "configuration_rejected",
                     packetInput.readAnonymousNbt().chatText().take(512),
@@ -241,17 +253,15 @@ class ModernOfflineMinecraftConnection(
     }
 
     private fun respondKnownPacks(input: DataInputStream) {
-        val packs = List(input.readVarInt()) {
-            Triple(input.readProtocolString(), input.readProtocolString(), input.readProtocolString())
+        val count = input.readVarInt()
+        require(count in 0..1_024) { "Invalid known pack count" }
+        repeat(count) {
+            input.readProtocolString(); input.readProtocolString(); input.readProtocolString()
         }
         sendPacket(packet {
             writeVarInt(SERVERBOUND_KNOWN_PACKS)
-            writeVarInt(packs.size)
-            packs.forEach { (namespace, id, version) ->
-                writeProtocolString(namespace)
-                writeProtocolString(id)
-                writeProtocolString(version)
-            }
+            // This client has no bundled vanilla registries: request explicit registry data.
+            writeVarInt(0)
         })
     }
 
@@ -259,7 +269,10 @@ class ModernOfflineMinecraftConnection(
         try {
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
-                when (packetInput.readVarInt()) {
+                when (packetInput.readVarInt().also { packetTrace.record("i", it) }) {
+                    0x15 -> commonRequests.replyCookie(packetInput, 0x15)
+                    resourcePackId -> commonRequests.replyResourcePack(packetInput, 0x32)
+                    storeCookieId -> commonRequests.storeCookie(packetInput)
                     systemChatId -> runCatching { packetInput.readSystemChat() }.getOrNull()?.let(chatHistory::append)
                     0x21 -> runCatching { packetInput.readProfilelessChat() }.getOrNull()?.let(chatHistory::append)
                     playerChatId -> {
@@ -348,6 +361,12 @@ class ModernOfflineMinecraftConnection(
         visibilityCommands.onWorldReady()
     }
 
+    private fun sendClientBrand() = sendPacket(packet {
+        writeVarInt(0x02) // configuration custom payload
+        writeProtocolString("minecraft:brand")
+        writeProtocolString("CraftConnect")
+    })
+
     private fun sendClientSettings(packetId: Int) = sendPacket(packet {
         writeVarInt(packetId)
         writeProtocolString("en_US")
@@ -367,6 +386,7 @@ class ModernOfflineMinecraftConnection(
     private fun sendPacket(payload: ByteArray) {
         check(open.get()) { "Connection is not open" }
         synchronized(writeLock) {
+            packetTrace.record("o", ByteArrayInputStream(payload).readVarInt())
             requireOutput().apply { write(frame(payload, compressionThreshold)); flush() }
         }
     }
@@ -374,6 +394,7 @@ class ModernOfflineMinecraftConnection(
     private fun closeResources() {
         if (!open.getAndSet(false)) return
         visibilityCommands.reset()
+        commonRequests.clear()
         readerJob?.cancel()
         runCatching { socket?.close() }
         socket = null
@@ -395,6 +416,8 @@ class ModernOfflineMinecraftConnection(
         if (!USERNAME.matches(username)) throw MinecraftConnectionException.Authentication("invalid_offline_username")
     }
 
+    private val resourcePackId get() = if (version == MinecraftVersion.JAVA_26_3) 0x52 else 0x50
+    private val storeCookieId get() = if (version == MinecraftVersion.JAVA_26_3) 0x7A else 0x77
     private val joinGameId get() = if (version == MinecraftVersion.JAVA_26_3) 0x32 else 0x31
     private val gameStateId get() = if (version == MinecraftVersion.JAVA_26_3) 0x27 else 0x26
     private val keepAliveId get() = if (version == MinecraftVersion.JAVA_26_3) 0x2D else 0x2C

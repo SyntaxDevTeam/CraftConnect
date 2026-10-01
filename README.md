@@ -89,3 +89,17 @@ Connection failures display a diagnostic code containing the stage and protocol.
 Packet references: ViaVersion `Protocol26_1To26_2`, `Protocol26_2To26_3`,
 `ClientboundConfigurationPackets26_3`, `ClientboundPackets26_3`, and
 `EntityPacketRewriter26_3` in https://github.com/ViaVersion/ViaVersion.
+
+## Configuration interoperability
+
+The client announces its `CraftConnect` brand and replies to login/configuration/play
+cookie requests. Cookies remain in memory for one connection, with bounded size/count.
+Resource-pack tasks are acknowledged as accepted, downloaded and loaded in headless mode;
+no files are fetched, textures/audio are applied, or URLs recorded. This is protocol-level
+completion for a client without rendering. Known-pack selection is empty because the
+client has no bundled registries.
+
+Failures include the last 12 inbound/outbound packet IDs, prefixed `i`/`o`, together
+with the stage and protocol. The trace contains no packet payloads or credentials.
+These changes address missing configuration replies; live connectivity to MoonVale
+has not been verified from the development environment.
