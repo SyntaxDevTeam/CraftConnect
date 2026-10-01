@@ -58,7 +58,18 @@ class ServerChatCodecTest {
         }).readProfilelessChat())
     }
 
+    @Test fun unsignedPluginContentUsesTheServerRawDecoration() {
+        val types = ServerChatTypes()
+        types.readRegistry(input(packet {
+            writeProtocolString("minecraft:chat_type"); writeVarInt(1)
+            writeProtocolString("paper:raw"); writeBoolean(false)
+        }))
+        assertEquals(PlayerChat("plugin format", true), player().readPlayerChat(types))
+        assertEquals("", player(1).readPlayerChat(types).text)
+    }
+
     @Test fun malformedPacketIsRejected() {
         assertTrue(runCatching { input(byteArrayOf(8, 0, 4, 65)).readSystemChat() }.isFailure)
     }
 }
+

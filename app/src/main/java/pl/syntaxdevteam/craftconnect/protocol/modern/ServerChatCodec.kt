@@ -11,15 +11,15 @@ internal fun DataInputStream.readSystemChat(): String? {
     return if (readBoolean()) null else content // action bar is not chat history
 }
 
-internal fun DataInputStream.readProfilelessChat(): String {
+internal fun DataInputStream.readProfilelessChat(types: ServerChatTypes = ServerChatTypes()): String {
     val message = readAnonymousNbt().chatText()
-    readChatType()
+    val decoration = types.readHolder(this)
     val name = readAnonymousNbt().chatText()
     val target = if (readBoolean()) readAnonymousNbt().chatText() else null
-    return decorate(name, message, target)
+    return decoration.render(name, message, target)
 }
 
-internal fun DataInputStream.readPlayerChat(): PlayerChat {
+internal fun DataInputStream.readPlayerChat(types: ServerChatTypes = ServerChatTypes()): PlayerChat {
     readVarInt() // global index, protocol 775
     readLong(); readLong() // sender UUID
     readVarInt() // sender message index
@@ -38,27 +38,12 @@ internal fun DataInputStream.readPlayerChat(): PlayerChat {
         require(words in 0..4)
         repeat(words) { readLong() }
     }
-    readChatType()
+    val decoration = types.readHolder(this)
     val name = readAnonymousNbt().chatText()
     val target = if (readBoolean()) readAnonymousNbt().chatText() else null
     // Never disclose content the server marked as filtered.
-    return PlayerChat(if (filter == 0) decorate(name, unsigned ?: plain, target) else "", signed)
+    return PlayerChat(if (filter == 0) decoration.render(name, unsigned ?: plain, target) else "", signed)
 }
-
-private fun DataInputStream.readChatType() {
-    val id = readVarInt()
-    require(id >= 0)
-    if (id == 0) repeat(2) { // chat and narration decorations in an inline holder
-        readProtocolString()
-        val parameters = readVarInt()
-        require(parameters in 0..3)
-        repeat(parameters) { require(readVarInt() in 0..2) }
-        readAnonymousNbt() // decoration style
-    }
-}
-
-private fun decorate(name: String, message: String, target: String?): String =
-    if (name.isBlank()) message else if (target == null) "$name: $message" else "$name → $target: $message"
 
 internal fun NbtTag.chatText(depth: Int = 0): String {
     require(depth <= 64)
@@ -70,15 +55,10 @@ internal fun NbtTag.chatText(depth: Int = 0): String {
             val key = (value["translate"] as? NbtTag.StringTag)?.value
             val args = (value["with"] as? NbtTag.ListTag)?.value.orEmpty().map { it.chatText(depth + 1) }
             val fallback = (value["fallback"] as? NbtTag.StringTag)?.value
-            val main = text ?: when (key) {
-                "chat.type.text" -> args.getOrNull(0).orEmpty() + ": " + args.getOrNull(1).orEmpty()
-                "chat.type.announcement" -> "[" + args.getOrNull(0).orEmpty() + "] " + args.getOrNull(1).orEmpty()
-                "chat.type.emote" -> "* " + args.joinToString(" ")
-                null -> ""
-                else -> (fallback ?: key) + if (args.isEmpty()) "" else " " + args.joinToString(" ")
-            }
+            val main = text ?: if (key == null) "" else renderChatTranslation(key, args, fallback)
             main + (value["extra"] as? NbtTag.ListTag)?.chatText(depth + 1).orEmpty()
         }
         else -> ""
     }.take(16_384)
 }
+

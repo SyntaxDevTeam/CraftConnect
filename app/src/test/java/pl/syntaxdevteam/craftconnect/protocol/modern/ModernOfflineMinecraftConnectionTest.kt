@@ -3,6 +3,7 @@ package pl.syntaxdevteam.craftconnect.protocol.modern
 import pl.syntaxdevteam.craftconnect.bridge.protocol.AuthenticationBridgeProtocol
 import java.net.ServerSocket
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertTrue
@@ -34,6 +35,8 @@ class ModernOfflineMinecraftConnectionTest {
     private fun verifyVersion(version: MinecraftVersion, compressed: Boolean = false) = runBlocking {
         val compressionThreshold = if (compressed) 256 else null
         val latest = version == MinecraftVersion.JAVA_26_3
+        val canSendChat = CompletableDeferred<Unit>()
+        val canDisconnect = CompletableDeferred<Unit>()
         ServerSocket(0).use { serverSocket ->
             val server = async(Dispatchers.IO) {
                 serverSocket.accept().use { client ->
@@ -79,6 +82,11 @@ class ModernOfflineMinecraftConnectionTest {
                     assertEquals(2, brand.readVarInt())
                     assertEquals("minecraft:brand", brand.readProtocolString())
                     assertEquals("CraftConnect", brand.readProtocolString())
+                    output.write(frame(packet {
+                        writeVarInt(7); writeProtocolString("minecraft:chat_type"); writeVarInt(1)
+                        writeProtocolString("paper:raw"); writeBoolean(false)
+                    }, compressionThreshold))
+                    output.flush()
 
                     // A real server waits for these replies before finishing configuration.
                     output.write(frame(packet {
@@ -138,6 +146,17 @@ class ModernOfflineMinecraftConnectionTest {
                     val keepAlive = readPacket(input, compressionThreshold)
                     assertEquals(0x1C, keepAlive.readVarInt())
                     assertEquals(987_654_321L, keepAlive.readLong())
+                    canSendChat.complete(Unit)
+                    val outgoingChat = readPacket(input, compressionThreshold)
+                    assertEquals(0x09, outgoingChat.readVarInt())
+                    assertEquals("actual message", outgoingChat.readProtocolString())
+                    val timestamp = outgoingChat.readLong()
+                    assertTrue(kotlin.math.abs(System.currentTimeMillis() - timestamp) < 10_000)
+                    assertEquals(0L, outgoingChat.readLong()) // salt
+                    assertEquals(false, outgoingChat.readBoolean()) // unsigned offline message
+                    assertEquals(0, outgoingChat.readVarInt())
+                    repeat(4) { assertEquals(0, outgoingChat.readUnsignedByte()) }
+                    assertEquals(0, outgoingChat.available())
                     // No visibility command is sent at protocol login. Only after
                     // world readiness and an API-backed bridge confirmation.
                     output.write(frame(packet {
@@ -181,6 +200,22 @@ class ModernOfflineMinecraftConnectionTest {
                     output.write(frame(packet { writeVarInt(if (latest) 0x27 else 0x26); writeByte(3); writeFloat(3f) }, compressionThreshold))
                     output.flush()
                     output.write(frame(packet {
+                        writeVarInt(if (latest) 0x47 else 0x46); writeByte(0x19); writeVarInt(2)
+                        for ((id, name) in listOf(1L to "OfflineUser", 2L to "Luna")) {
+                            writeLong(0); writeLong(id); writeProtocolString(name); writeVarInt(0)
+                            writeBoolean(true); writeVarInt(42)
+                        }
+                    }, compressionThreshold))
+                    output.write(frame(packet {
+                        writeVarInt(if (latest) 0x46 else 0x45); writeVarInt(1); writeLong(0); writeLong(2)
+                    }, compressionThreshold))
+                    output.write(frame(packet {
+                        writeVarInt(0x21); writeByte(8); writeUTF("OfflineUser: actual message")
+                        writeVarInt(1); writeByte(8); writeUTF("OfflineUser"); writeBoolean(false)
+                    }, compressionThreshold))
+                    output.flush()
+                    withTimeout(5_000) { canDisconnect.await() }
+                    output.write(frame(packet {
                         writeVarInt(0x20); writeByte(8); writeUTF("Server restarting")
                     }, compressionThreshold))
                     output.flush()
@@ -196,6 +231,12 @@ class ModernOfflineMinecraftConnectionTest {
 
             assertEquals(version.protocol, session.protocolVersion)
             assertEquals("OfflineUser", session.username)
+            withTimeout(5_000) { canSendChat.await() }
+            connection.sendChat("actual message")
+            withTimeout(5_000) { connection.chatMessages.first { it.lastOrNull()?.content == "OfflineUser: actual message" } }
+            assertEquals(listOf("OfflineUser"), connection.players.value.map { it.name })
+            assertEquals(42, connection.players.value.single().pingMs)
+            canDisconnect.complete(Unit)
             withTimeout(5_000) { server.await() }
             assertEquals("Welcome before UI", connection.chatMessages.value.first().content)
             val failure = withTimeout(5_000) { connection.connectionFailures.first() }
@@ -206,6 +247,7 @@ class ModernOfflineMinecraftConnectionTest {
             assertTrue(sendFailure is MinecraftConnectionException)
             assertEquals("Server restarting", (sendFailure as MinecraftConnectionException).serverMessage)
             connection.disconnect()
+            assertTrue(connection.players.value.isEmpty())
         }
     }
 }

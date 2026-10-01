@@ -46,6 +46,9 @@ class ModernOfflineMinecraftConnection(
     private val packetTrace = PacketTrace()
     private val commonRequests = CommonServerRequests(::sendPacket)
     private val addressResolver = MinecraftServerAddressResolver()
+    private val chatTypes = ServerChatTypes()
+    private val playerList = ServerPlayerList()
+    override val players = playerList.players
     private val chatHistory = pl.syntaxdevteam.craftconnect.protocol.chat.ChatHistory()
     override val chatMessages = chatHistory.messages
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -74,6 +77,8 @@ class ModernOfflineMinecraftConnection(
         packetTrace.clear()
         commonRequests.clear()
         chatHistory.clear()
+        chatTypes.clear()
+        playerList.clear()
         validateUsername(username)
         try {
             val endpoint = addressResolver.resolve(server.address)
@@ -241,6 +246,7 @@ class ModernOfflineMinecraftConnection(
                 0x00 -> commonRequests.replyCookie(packetInput, 0x01)
                 0x09 -> commonRequests.replyResourcePack(packetInput, 0x06)
                 0x0A -> commonRequests.storeCookie(packetInput)
+                0x07 -> chatTypes.readRegistry(packetInput)
                 CONFIGURATION_DISCONNECT -> throw MinecraftConnectionException.Authentication(
                     "configuration_rejected",
                     packetInput.readAnonymousNbt().chatText().take(512),
@@ -280,9 +286,11 @@ class ModernOfflineMinecraftConnection(
                     resourcePackId -> commonRequests.replyResourcePack(packetInput, 0x32)
                     storeCookieId -> commonRequests.storeCookie(packetInput)
                     systemChatId -> runCatching { packetInput.readSystemChat() }.getOrNull()?.let(chatHistory::append)
-                    0x21 -> runCatching { packetInput.readProfilelessChat() }.getOrNull()?.let(chatHistory::append)
+                    0x21 -> runCatching { packetInput.readProfilelessChat(chatTypes) }.getOrNull()?.let(chatHistory::append)
+                    playerInfoUpdateId -> playerList.update(packetInput)
+                    playerInfoRemoveId -> playerList.remove(packetInput)
                     playerChatId -> {
-                        val chat = runCatching { packetInput.readPlayerChat() }.getOrNull()
+                        val chat = runCatching { packetInput.readPlayerChat(chatTypes) }.getOrNull()
                         if (chat != null) {
                             chatHistory.append(chat.text)
                             if (chat.signed) sendPacket(packet {
@@ -420,6 +428,7 @@ class ModernOfflineMinecraftConnection(
     private fun closeResources(failure: MinecraftConnectionException? = null) {
         if (!open.getAndSet(false)) return
         failure?.let { mutableConnectionFailures.value = it }
+        playerList.clear()
         visibilityCommands.reset()
         commonRequests.clear()
         readerJob?.cancel()
@@ -443,6 +452,8 @@ class ModernOfflineMinecraftConnection(
         if (!USERNAME.matches(username)) throw MinecraftConnectionException.Authentication("invalid_offline_username")
     }
 
+    private val playerInfoUpdateId get() = if (version == MinecraftVersion.JAVA_26_3) 0x47 else 0x46
+    private val playerInfoRemoveId get() = if (version == MinecraftVersion.JAVA_26_3) 0x46 else 0x45
     private val resourcePackId get() = if (version == MinecraftVersion.JAVA_26_3) 0x52 else 0x50
     private val storeCookieId get() = if (version == MinecraftVersion.JAVA_26_3) 0x7A else 0x77
     private val joinGameId get() = if (version == MinecraftVersion.JAVA_26_3) 0x32 else 0x31

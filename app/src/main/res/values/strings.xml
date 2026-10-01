@@ -93,6 +93,12 @@
     <string name="minecraft_version">Minecraft Java version</string>
     <string name="minecraft_version_value">%1$s (protocol %2$d)</string>
     <string name="selected_protocol_notice">Uses Minecraft Java %1$s protocol (%2$d). The server must allow offline-mode logins.</string>
+    <string name="players_empty">Waiting for the server player list…</string>
+    <string name="players_disconnected">Connect to a server to view its players.</string>
+    <string name="players_no_matches">No players match your search.</string>
+    <string name="player_ping">%1$d ms</string>
+    <string name="player_ping_unknown">—</string>
 </resources>
+
 
 

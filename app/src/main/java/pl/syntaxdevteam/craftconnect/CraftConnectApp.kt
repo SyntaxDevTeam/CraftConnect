@@ -53,6 +53,8 @@ fun CraftConnectApp(
     var connectionError by remember { mutableStateOf<String?>(null) }
     var serverDialog by remember { mutableStateOf<ServerDialogRequest?>(null) }
     val emptyChat = remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<pl.syntaxdevteam.craftconnect.domain.model.ReceivedChatMessage>()) }
+    val emptyPlayers = remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<pl.syntaxdevteam.craftconnect.domain.model.ServerPlayer>()) }
+    val players by (sessionManager?.players ?: emptyPlayers).collectAsState()
     val chatMessages by (sessionManager?.chatMessages ?: emptyChat).collectAsState()
     val savedServers by serverRepository.servers.collectAsState()
     val savedAccounts by accountRepository.accounts.collectAsState()
@@ -91,7 +93,9 @@ fun CraftConnectApp(
                 )
             },
         ) { contentPadding ->
-            val currentServer = activeServer ?: savedServers.firstOrNull() ?: DemoRepository.servers.first()
+            val currentServer = (activeServer ?: savedServers.firstOrNull() ?: DemoRepository.servers.first()).let {
+                if (connectionState == ConnectionState.CONNECTED) it.copy(playersOnline = players.size) else it
+            }
 
             Box(Modifier.padding(contentPadding)) {
                 when (destination) {
@@ -130,7 +134,7 @@ fun CraftConnectApp(
                             if (message.startsWith('/')) manager.sendCommand(message) else manager.sendChat(message)
                         }
                     }
-                    AppDestination.Players -> PlayersScreen(currentServer)
+                    AppDestination.Players -> PlayersScreen(currentServer, players, connectionState == ConnectionState.CONNECTED)
                     AppDestination.Accounts -> AccountsScreen(
                         accounts = savedAccounts,
                         onCreate = accountRepository::createOffline,

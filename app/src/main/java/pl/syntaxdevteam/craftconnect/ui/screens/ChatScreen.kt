@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pl.syntaxdevteam.craftconnect.R
@@ -130,7 +131,11 @@ private fun ChatLine(message: ReceivedChatMessage) {
         verticalAlignment = Alignment.Top,
     ) {
         Text(message.content, color = TextPrimary, modifier = Modifier.weight(1f), fontSize = 13.sp)
-        Text(remember(message.receivedAtEpochMillis) { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(message.receivedAtEpochMillis)) }, color = TextSecondary, fontSize = 10.sp)
+        Text(
+            android.text.format.DateFormat.getTimeFormat(LocalContext.current).format(java.util.Date(message.receivedAtEpochMillis)),
+            color = TextSecondary, fontSize = 10.sp,
+        )
     }
 }
+
 
