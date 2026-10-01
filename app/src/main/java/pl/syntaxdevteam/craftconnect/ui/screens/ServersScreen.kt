@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pl.syntaxdevteam.craftconnect.R
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
+import pl.syntaxdevteam.craftconnect.domain.model.AccountProfile
 import pl.syntaxdevteam.craftconnect.domain.session.ConnectionState
 import pl.syntaxdevteam.craftconnect.ui.components.BrandHeader
 import pl.syntaxdevteam.craftconnect.ui.components.GlowButton
@@ -57,6 +59,7 @@ fun ServersScreen(
     servers: List<ServerProfile>,
     connectionState: ConnectionState,
     connectionError: String?,
+    accounts: List<AccountProfile>,
     onCreate: (name: String, address: String, favorite: Boolean) -> Unit,
     onUpdate: (ServerProfile) -> Unit,
     onDelete: (String) -> Unit,
@@ -160,6 +163,7 @@ fun ServersScreen(
             connecting = connectionState == ConnectionState.CONNECTING,
             failed = connectionState == ConnectionState.FAILED,
             connectionError = connectionError,
+            accounts = accounts,
             onDismiss = { connectionTarget = null },
             onConnect = { address, username -> onConnect(target.copy(address = address), username) },
         )
@@ -266,11 +270,12 @@ private fun OfflineConnectDialog(
     connecting: Boolean,
     failed: Boolean,
     connectionError: String?,
+    accounts: List<AccountProfile>,
     onDismiss: () -> Unit,
     onConnect: (String, String) -> Unit,
 ) {
     var address by remember(initialAddress) { mutableStateOf(initialAddress) }
-    var username by remember { mutableStateOf("") }
+    var username by remember(accounts) { mutableStateOf(accounts.firstOrNull()?.username.orEmpty()) }
     val valid = address.isNotBlank() && Regex("[A-Za-z0-9_]{3,16}").matches(username)
 
     AlertDialog(
@@ -291,7 +296,18 @@ private fun OfflineConnectDialog(
                     label = { Text(stringResource(R.string.offline_username)) },
                     singleLine = true,
                     enabled = !connecting,
+                    readOnly = true,
                 )
+                if (accounts.isEmpty()) {
+                    Text(stringResource(R.string.account_required), color = Crimson, fontSize = 12.sp)
+                } else {
+                    Text(stringResource(R.string.choose_saved_account), color = TextSecondary, fontSize = 12.sp)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(accounts, key = { it.id }) { account ->
+                            GlowButton(account.username, onClick = { username = account.username })
+                        }
+                    }
+                }
                 Text(stringResource(R.string.modern_protocol_notice), color = TextSecondary, fontSize = 12.sp)
                 if (failed) {
                     Text(

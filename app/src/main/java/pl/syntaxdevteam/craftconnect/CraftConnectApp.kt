@@ -21,6 +21,7 @@ import pl.syntaxdevteam.craftconnect.domain.session.ConnectionState
 import pl.syntaxdevteam.craftconnect.domain.session.SessionManager
 import pl.syntaxdevteam.craftconnect.domain.session.SessionManagerFactory
 import pl.syntaxdevteam.craftconnect.domain.server.ServerRepository
+import pl.syntaxdevteam.craftconnect.domain.account.AccountRepository
 import pl.syntaxdevteam.craftconnect.ui.components.CraftBackground
 import pl.syntaxdevteam.craftconnect.ui.components.CraftBottomBar
 import pl.syntaxdevteam.craftconnect.ui.components.ServerDialogForm
@@ -28,12 +29,14 @@ import pl.syntaxdevteam.craftconnect.ui.screens.ChatScreen
 import pl.syntaxdevteam.craftconnect.ui.screens.PlayersScreen
 import pl.syntaxdevteam.craftconnect.ui.screens.ServersScreen
 import pl.syntaxdevteam.craftconnect.ui.screens.SettingsScreen
+import pl.syntaxdevteam.craftconnect.ui.screens.AccountsScreen
 import kotlinx.coroutines.launch
 
 enum class AppDestination {
     Servers,
     Chat,
     Players,
+    Accounts,
     Settings,
 }
 
@@ -41,6 +44,7 @@ enum class AppDestination {
 fun CraftConnectApp(
     sessionManagerFactory: SessionManagerFactory,
     serverRepository: ServerRepository,
+    accountRepository: AccountRepository,
 ) {
     var destination by remember { mutableStateOf(AppDestination.Servers) }
     var activeServer by remember { mutableStateOf<ServerProfile?>(null) }
@@ -49,6 +53,7 @@ fun CraftConnectApp(
     var connectionError by remember { mutableStateOf<String?>(null) }
     var serverDialog by remember { mutableStateOf<ServerDialogRequest?>(null) }
     val savedServers by serverRepository.servers.collectAsState()
+    val savedAccounts by accountRepository.accounts.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(sessionManager) {
@@ -78,6 +83,7 @@ fun CraftConnectApp(
                         servers = savedServers,
                         connectionState = connectionState,
                         connectionError = connectionError,
+                        accounts = savedAccounts,
                         onCreate = { name, address, favorite ->
                             serverRepository.create(name, address, favorite)
                         },
@@ -106,6 +112,12 @@ fun CraftConnectApp(
                         }
                     }
                     AppDestination.Players -> PlayersScreen(currentServer)
+                    AppDestination.Accounts -> AccountsScreen(
+                        accounts = savedAccounts,
+                        onCreate = accountRepository::createOffline,
+                        onUpdate = accountRepository::update,
+                        onDelete = accountRepository::delete,
+                    )
                     AppDestination.Settings -> SettingsScreen()
                 }
             }

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -257,6 +258,7 @@ fun CraftBottomBar(destination: AppDestination, onDestination: (AppDestination) 
         BottomItem(AppDestination.Servers, stringResource(R.string.nav_servers), Icons.Rounded.Home, destination, onDestination)
         BottomItem(AppDestination.Chat, stringResource(R.string.nav_chat), Icons.AutoMirrored.Rounded.Chat, destination, onDestination)
         BottomItem(AppDestination.Players, stringResource(R.string.nav_players), Icons.Rounded.Person, destination, onDestination)
+        BottomItem(AppDestination.Accounts, stringResource(R.string.nav_accounts), Icons.Rounded.AccountCircle, destination, onDestination)
         BottomItem(AppDestination.Settings, stringResource(R.string.nav_settings), Icons.Rounded.Settings, destination, onDestination)
     }
 }
