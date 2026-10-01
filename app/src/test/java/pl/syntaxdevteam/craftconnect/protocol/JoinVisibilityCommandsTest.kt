@@ -11,14 +11,43 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class JoinVisibilityCommandsTest {
     @Test
+    fun worldJoinAndFailedLoginNeverSendCommands() = runTest {
+        val sent = mutableListOf<String>()
+        val commands = JoinVisibilityCommands(this, { sent += it })
+        commands.onWorldReady()
+        commands.onServerMessage("Nieprawidłowe hasło")
+        advanceUntilIdle()
+        assertEquals(emptyList<String>(), sent)
+        commands.onServerMessage("Pomyślnie zalogowano na serwerze!")
+        runCurrent()
+        assertEquals(listOf("gamemode spectator"), sent)
+        commands.reset()
+    }
+
+    @Test
+    fun authenticationBeforeWorldJoinWaitsForWorld() = runTest {
+        val sent = mutableListOf<String>()
+        val commands = JoinVisibilityCommands(this, { sent += it })
+        commands.onServerMessage("Successfully logged in!")
+        advanceUntilIdle()
+        assertEquals(emptyList<String>(), sent)
+        commands.onWorldReady()
+        runCurrent()
+        assertEquals(listOf("gamemode spectator"), sent)
+        commands.reset()
+    }
+
+    @Test
     fun sendsSpectatorThenOneFallbackWithoutConfirmation() = runTest {
         val sent = mutableListOf<String>()
         val commands = JoinVisibilityCommands(this, { sent += it })
+        commands.onServerMessage("Pomyślnie zalogowano na serwerze!")
         commands.onWorldReady()
         runCurrent()
         assertEquals(listOf("gamemode spectator"), sent)
         advanceTimeBy(3_000)
         runCurrent()
+        commands.onServerMessage("Pomyślnie zalogowano na serwerze!")
         commands.onWorldReady()
         advanceUntilIdle()
         assertEquals(listOf("gamemode spectator", "vanish"), sent)
@@ -28,6 +57,7 @@ class JoinVisibilityCommandsTest {
     fun confirmationCancelsFallback() = runTest {
         val sent = mutableListOf<String>()
         val commands = JoinVisibilityCommands(this, { sent += it })
+        commands.onServerMessage("Pomyślnie zalogowano na serwerze!")
         commands.onWorldReady()
         runCurrent()
         commands.onGameMode(3)
@@ -40,6 +70,7 @@ class JoinVisibilityCommandsTest {
         val sent = mutableListOf<String>()
         val commands = JoinVisibilityCommands(this, { sent += it })
         commands.onGameMode(3)
+        commands.onServerMessage("Pomyślnie zalogowano na serwerze!")
         commands.onWorldReady()
         advanceUntilIdle()
         assertEquals(emptyList<String>(), sent)
@@ -49,11 +80,13 @@ class JoinVisibilityCommandsTest {
     fun disconnectCancelsPendingCommandsAndReconnectStartsFresh() = runTest {
         val sent = mutableListOf<String>()
         val commands = JoinVisibilityCommands(this, { sent += it })
+        commands.onServerMessage("Pomyślnie zalogowano na serwerze!")
         commands.onWorldReady()
         runCurrent()
         commands.reset()
         advanceUntilIdle()
         assertEquals(listOf("gamemode spectator"), sent)
+        commands.onServerMessage("Pomyślnie zalogowano na serwerze!")
         commands.onWorldReady()
         advanceUntilIdle()
         assertEquals(listOf("gamemode spectator", "gamemode spectator", "vanish"), sent)

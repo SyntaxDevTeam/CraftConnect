@@ -13,12 +13,27 @@ internal class JoinVisibilityCommands(
     private val confirmationTimeoutMillis: Long = 3_000,
 ) {
     private var started = false
+    private var worldReady = false
+    private var authenticated = false
     private var spectator = false
     private var attempt: Job? = null
 
     @Synchronized
     fun onWorldReady() {
-        if (started) return
+        worldReady = true
+        startIfReady()
+    }
+
+    /** Only server system messages may reach this method, never player chat. */
+    @Synchronized
+    fun onServerMessage(message: String) {
+        if (!ServerLoginConfirmation.isSuccessful(message)) return
+        authenticated = true
+        startIfReady()
+    }
+
+    private fun startIfReady() {
+        if (started || !worldReady || !authenticated) return
         started = true
         if (spectator) return
         attempt = scope.launch {
@@ -48,6 +63,8 @@ internal class JoinVisibilityCommands(
         attempt?.cancel()
         attempt = null
         started = false
+        worldReady = false
+        authenticated = false
         spectator = false
     }
 }

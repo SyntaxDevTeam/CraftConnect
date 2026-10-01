@@ -233,6 +233,10 @@ class ModernOfflineMinecraftConnection(
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
+                    CLIENTBOUND_SYSTEM_CHAT -> {
+                        val message = packetInput.readInlineNbt().plainText()
+                        if (!packetInput.readBoolean()) visibilityCommands.onServerMessage(message)
+                    }
                     CLIENTBOUND_JOIN_GAME -> readInitialGameMode(packetInput)
                     CLIENTBOUND_GAME_STATE -> {
                         val reason = packetInput.readUnsignedByte()
@@ -365,6 +369,7 @@ class ModernOfflineMinecraftConnection(
         const val SERVERBOUND_KNOWN_PACKS = 0x07
         const val SERVERBOUND_ACCEPT_CODE_OF_CONDUCT = 0x09
         const val CLIENTBOUND_JOIN_GAME = 0x31
+        const val CLIENTBOUND_SYSTEM_CHAT = 0x79
         const val CLIENTBOUND_GAME_STATE = 0x26
         const val CLIENTBOUND_KEEP_ALIVE = 0x2C
         const val CLIENTBOUND_DISCONNECT = 0x20
@@ -396,4 +401,3 @@ private fun java.io.DataOutputStream.writeUuid(uuid: UUID) { writeLong(uuid.most
 private fun String.minecraftText(): String =
     (Regex("\"text\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"").find(this)?.groupValues?.get(1) ?: take(512))
         .replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\").take(512)
-

@@ -2,18 +2,26 @@
 
 ## Automatyczna próba ukrycia postaci
 
-Po pierwszym potwierdzeniu pozycji w świecie aplikacja wysyła `/gamemode spectator`.
-Jeżeli serwer nie potwierdzi trybu spectator pakietem zmiany trybu w ciągu 3 sekund,
-aplikacja jednokrotnie wysyła `/vanish` jako fallback. Jeżeli gracz już dołącza jako
-spectator, komendy są pomijane. Teleporty i respawn nie ponawiają `/vanish`, ponieważ
-na wielu serwerach ta komenda przełącza niewidzialność. Rozłączenie anuluje próbę.
+Aplikacja czeka na systemowy komunikat serwera potwierdzający udane logowanie
+przez plugin `/login` (także logowanie dialogiem AuthGatewayX). Samo wejście do świata,
+wysłanie hasła albo zamknięcie dialogu nie uruchamia komend.
+
+Po potwierdzeniu logowania i otrzymaniu pozycji w świecie wysyła `/gamemode spectator`.
+Jeżeli serwer nie potwierdzi trybu spectator w ciągu 3 sekund, jednokrotnie wysyła
+`/vanish` jako fallback. Gracz dołączający już jako spectator nie otrzymuje tych komend.
+Teleporty i respawn nie ponawiają `/vanish`; rozłączenie anuluje oczekującą próbę.
+
+Rozpoznawane są domyślne polskie komunikaty sukcesu AuthGatewayX oraz podstawowe
+polskie i angielskie komunikaty logowania, w tym AuthMe `Successfully logged in!`.
+Komunikaty muszą pochodzić z czatu systemowego serwera, nie ze zwykłego czatu graczy.
+Serwer z własnym tekstem sukcesu wymaga dopisania go w `ServerLoginConfirmation`.
+Brak rozpoznanego potwierdzenia oznacza brak automatycznych komend, także na serwerach
+bez pluginu logowania. Nie ma awaryjnego timera wysyłającego komendy przed logowaniem.
 
 Obie komendy wymagają wsparcia serwera i odpowiednich uprawnień. Wysłanie komendy
 nie gwarantuje niewidzialności, odporności na obrażenia ani ochrony ekwipunku.
-Na serwerach wymagających dodatkowego `/login` po wejściu do świata pierwsza próba
-może zostać odrzucona przez plugin logowania; po uwierzytelnieniu komendę należy
-wtedy wysłać ręcznie. Aplikacja nie przywraca automatycznie wcześniejszego trybu gry
-i nie wysyła ponownie `/vanish` przy rozłączeniu.
+Aplikacja nie przywraca automatycznie wcześniejszego trybu gry i nie wysyła ponownie
+`/vanish` przy rozłączeniu.
 
 **Headless Minecraft protocol client for Android.**
 

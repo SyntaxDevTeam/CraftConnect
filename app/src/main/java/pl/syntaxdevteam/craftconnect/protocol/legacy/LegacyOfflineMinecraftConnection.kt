@@ -127,6 +127,15 @@ class LegacyOfflineMinecraftConnection(
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
+                    CLIENTBOUND_CHAT_PACKET -> {
+                        val json = packetInput.readProtocolString(MAX_JSON_LENGTH)
+                        val position = packetInput.readUnsignedByte()
+                        if (position == 1) {
+                            val text = Regex("\"text\"\\s*:\\s*\"([^\"]*)\"")
+                                .findAll(json).joinToString("") { it.groupValues[1] }
+                            visibilityCommands.onServerMessage(text)
+                        }
+                    }
                     CLIENTBOUND_JOIN_GAME_PACKET -> {
                         packetInput.readInt()
                         visibilityCommands.onGameMode(packetInput.readUnsignedByte() and 0x07)
@@ -262,6 +271,7 @@ class LegacyOfflineMinecraftConnection(
         const val LOGIN_SUCCESS_PACKET = 0x02
         const val SET_COMPRESSION_PACKET = 0x03
         const val CLIENTBOUND_JOIN_GAME_PACKET = 0x01
+        const val CLIENTBOUND_CHAT_PACKET = 0x02
         const val CLIENTBOUND_GAME_STATE_PACKET = 0x2B
         const val CLIENTBOUND_KEEP_ALIVE_PACKET = 0x00
         const val CLIENTBOUND_POSITION_PACKET = 0x08
@@ -289,4 +299,3 @@ private fun String.minecraftText(): String {
         .replace("\\\\", "\\")
         .take(512)
 }
-
