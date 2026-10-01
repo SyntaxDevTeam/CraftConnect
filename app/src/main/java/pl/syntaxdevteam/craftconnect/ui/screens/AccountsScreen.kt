@@ -1,5 +1,10 @@
 package pl.syntaxdevteam.craftconnect.ui.screens
 
+import pl.syntaxdevteam.craftconnect.domain.auth.MicrosoftSignInState
+import pl.syntaxdevteam.craftconnect.domain.model.AccountType.MICROSOFT
+import pl.syntaxdevteam.craftconnect.domain.model.AccountType.OFFLINE
+import pl.syntaxdevteam.craftconnect.ui.components.MicrosoftSignInCard
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -49,6 +53,9 @@ fun AccountsScreen(
     onCreate: (String) -> Unit,
     onUpdate: (AccountProfile) -> Unit,
     onDelete: (String) -> Unit,
+    microsoftState: MicrosoftSignInState,
+    onMicrosoftSignIn: () -> Unit,
+    onCancelSignIn: () -> Unit,
 ) {
     var editorTarget by remember { mutableStateOf<AccountProfile?>(null) }
     var editorVisible by remember { mutableStateOf(false) }
@@ -72,7 +79,20 @@ fun AccountsScreen(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item { MicrosoftAccountPreview() }
+            item { MicrosoftSignInCard(microsoftState, onMicrosoftSignIn, onCancelSignIn) }
+            items(accounts.filter { it.type == MICROSOFT }, key = { it.id }) { account ->
+                NeonCard {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(account.username, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.microsoft_premium_account), color = TextSecondary)
+                        }
+                        IconButton(onClick = { deleteTarget = account }) {
+                            Icon(Icons.Rounded.Delete, stringResource(R.string.delete_account), tint = TextSecondary)
+                        }
+                    }
+                }
+            }
             item {
                 Text(
                     stringResource(R.string.offline_accounts),
@@ -81,10 +101,10 @@ fun AccountsScreen(
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
-            if (accounts.isEmpty()) {
+            if (accounts.none { it.type == OFFLINE }) {
                 item { Text(stringResource(R.string.no_offline_accounts), color = TextSecondary) }
             }
-            items(accounts, key = { it.id }) { account ->
+            items(accounts.filter { it.type == OFFLINE }, key = { it.id }) { account ->
                 OfflineAccountRow(
                     account,
                     onEdit = { editorTarget = account; editorVisible = true },
@@ -97,7 +117,7 @@ fun AccountsScreen(
     if (editorVisible) {
         AccountEditorDialog(
             account = editorTarget,
-            unavailableUsernames = accounts.filterNot { it.id == editorTarget?.id }.map { it.username },
+            unavailableUsernames = accounts.filter { it.type == OFFLINE && it.id != editorTarget?.id }.map { it.username },
             onDismiss = { editorVisible = false },
         ) { username ->
             editorTarget?.let { onUpdate(it.copy(username = username)) } ?: onCreate(username)
@@ -113,20 +133,6 @@ fun AccountsScreen(
             dismissButton = { GlowButton(stringResource(R.string.cancel)) { deleteTarget = null } },
             containerColor = SurfaceRaised,
         )
-    }
-}
-
-@Composable
-private fun MicrosoftAccountPreview() {
-    NeonCard {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Lock, null, tint = Crimson, modifier = Modifier.size(34.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.microsoft_accounts), fontWeight = FontWeight.Bold)
-                Text(stringResource(R.string.microsoft_accounts_coming_soon), color = TextSecondary, fontSize = 12.sp)
-            }
-        }
     }
 }
 

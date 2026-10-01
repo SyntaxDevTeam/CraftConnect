@@ -21,7 +21,7 @@ class SharedPreferencesAccountRepository internal constructor(
     @Synchronized
     override fun createOffline(username: String): AccountProfile {
         val normalized = validateUsername(username)
-        require(mutableAccounts.value.none { it.username.equals(normalized, ignoreCase = true) }) {
+        require(mutableAccounts.value.none { it.type == AccountType.OFFLINE && it.username.equals(normalized, ignoreCase = true) }) {
             "Account username already exists"
         }
         return AccountProfile(createId(), normalized, AccountType.OFFLINE).also {
@@ -30,11 +30,20 @@ class SharedPreferencesAccountRepository internal constructor(
     }
 
     @Synchronized
+    override fun saveMicrosoft(username: String, uuid: String): AccountProfile {
+        val normalized = uuid.replace("-", "").lowercase()
+        require(Regex("[a-f0-9]{32}").matches(normalized))
+        val profile = AccountProfile("microsoft:$normalized", validateUsername(username), AccountType.MICROSOFT)
+        publish(mutableAccounts.value.filterNot { it.id == profile.id } + profile)
+        return profile
+    }
+
+    @Synchronized
     override fun update(account: AccountProfile) {
-        require(account.type == AccountType.OFFLINE) { "Microsoft accounts cannot be edited yet" }
+        require(account.type == AccountType.OFFLINE && mutableAccounts.value.none { it.id == account.id && it.type != AccountType.OFFLINE }) { "Microsoft identity is managed by authentication" }
         val normalized = account.copy(username = validateUsername(account.username))
         require(mutableAccounts.value.none {
-            it.id != normalized.id && it.username.equals(normalized.username, ignoreCase = true)
+            it.type == AccountType.OFFLINE && it.id != normalized.id && it.username.equals(normalized.username, ignoreCase = true)
         }) { "Account username already exists" }
         if (mutableAccounts.value.none { it.id == normalized.id }) return
         publish(mutableAccounts.value.map { if (it.id == normalized.id) normalized else it })

@@ -1,5 +1,12 @@
 package pl.syntaxdevteam.craftconnect.data.session
 
+import pl.syntaxdevteam.craftconnect.domain.auth.AuthProblem.CONFIGURATION
+import pl.syntaxdevteam.craftconnect.domain.auth.AuthenticationException
+import pl.syntaxdevteam.craftconnect.domain.auth.MinecraftIdentity
+import pl.syntaxdevteam.craftconnect.domain.model.AccountProfile
+import pl.syntaxdevteam.craftconnect.domain.model.AccountType.MICROSOFT
+import pl.syntaxdevteam.craftconnect.protocol.ConnectedSession
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +37,9 @@ class DefaultSessionManager(
     private val connection: MinecraftConnection,
     private val clock: () -> Long = System::currentTimeMillis,
     private val observerScope: CoroutineScope = CoroutineScope(Dispatchers.Default),
+    private val premiumIdentity: suspend (AccountProfile) -> MinecraftIdentity = {
+        throw AuthenticationException(CONFIGURATION)
+    },
 ) : SessionManager {
     private val operationMutex = Mutex()
     private var failureObserver: Job? = null
@@ -42,7 +52,15 @@ class DefaultSessionManager(
     override val players = connection.players
     override val dialogEvents: Flow<ServerDialogEvent> = connection.dialogEvents
 
-    override suspend fun connect(server: ServerProfile, username: String) = operationMutex.withLock {
+    override suspend fun connect(server: ServerProfile, username: String) = connectUsing(server) { connection.connect(server, username) }
+
+    override suspend fun connect(server: ServerProfile, account: AccountProfile) =
+        connectUsing(server) {
+            if (account.type == MICROSOFT) connection.connect(server, premiumIdentity(account))
+            else connection.connect(server, account.username)
+        }
+
+    private suspend fun connectUsing(server: ServerProfile, login: suspend () -> ConnectedSession) = operationMutex.withLock {
         if (session.value.connectionState != ConnectionState.DISCONNECTED &&
             session.value.connectionState != ConnectionState.FAILED
         ) {
@@ -52,7 +70,7 @@ class DefaultSessionManager(
         failureObserver?.cancel()
         update(SessionSnapshot(connectionState = ConnectionState.CONNECTING, server = server))
         try {
-            val connected = connection.connect(server, username)
+            val connected = login()
             update(
                 session.value.copy(
                     connectionState = ConnectionState.CONNECTED,
@@ -72,6 +90,8 @@ class DefaultSessionManager(
         } catch (cancelled: CancellationException) {
             update(SessionSnapshot())
             throw cancelled
+        } catch (failure: AuthenticationException) {
+            fail(SessionError.Authentication("premium_${failure.problem.name.lowercase()}"))
         } catch (failure: MinecraftConnectionException) {
             fail(failure.toSessionError())
         } catch (_: Exception) {

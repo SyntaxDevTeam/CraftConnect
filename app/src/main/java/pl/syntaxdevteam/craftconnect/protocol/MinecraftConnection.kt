@@ -1,5 +1,9 @@
 package pl.syntaxdevteam.craftconnect.protocol
 
+import pl.syntaxdevteam.craftconnect.domain.auth.MinecraftIdentity
+import pl.syntaxdevteam.craftconnect.domain.model.ReceivedChatMessage
+import pl.syntaxdevteam.craftconnect.domain.model.ServerPlayer
+
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
@@ -16,10 +20,10 @@ data class ConnectedSession(
  * Presentation code communicates through SessionManager instead of this type.
  */
 interface MinecraftConnection {
-    val players: kotlinx.coroutines.flow.StateFlow<List<pl.syntaxdevteam.craftconnect.domain.model.ServerPlayer>>
+    val players: kotlinx.coroutines.flow.StateFlow<List<ServerPlayer>>
         get() = kotlinx.coroutines.flow.MutableStateFlow(emptyList())
 
-    val chatMessages: kotlinx.coroutines.flow.StateFlow<List<pl.syntaxdevteam.craftconnect.domain.model.ReceivedChatMessage>>
+    val chatMessages: kotlinx.coroutines.flow.StateFlow<List<ReceivedChatMessage>>
         get() = kotlinx.coroutines.flow.MutableStateFlow(emptyList())
 
     val dialogEvents: Flow<ServerDialogEvent>
@@ -30,6 +34,9 @@ interface MinecraftConnection {
         get() = emptyFlow()
 
     suspend fun connect(server: ServerProfile, username: String): ConnectedSession
+    suspend fun connect(server: ServerProfile, identity: MinecraftIdentity): ConnectedSession {
+        throw MinecraftConnectionException.Authentication("premium_protocol_unsupported")
+    }
     suspend fun disconnect()
     suspend fun sendChat(message: String)
     suspend fun sendCommand(command: String)

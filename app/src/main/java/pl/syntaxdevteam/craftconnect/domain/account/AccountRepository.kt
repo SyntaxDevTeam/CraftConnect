@@ -7,6 +7,7 @@ interface AccountRepository {
     val accounts: StateFlow<List<AccountProfile>>
 
     fun createOffline(username: String): AccountProfile
+    fun saveMicrosoft(username: String, uuid: String): AccountProfile
     fun update(account: AccountProfile)
     fun delete(id: String)
 }

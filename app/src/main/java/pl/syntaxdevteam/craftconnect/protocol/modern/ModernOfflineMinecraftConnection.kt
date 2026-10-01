@@ -1,5 +1,9 @@
 package pl.syntaxdevteam.craftconnect.protocol.modern
 
+import pl.syntaxdevteam.craftconnect.domain.auth.AuthenticationException
+import pl.syntaxdevteam.craftconnect.domain.auth.MinecraftIdentity
+import pl.syntaxdevteam.craftconnect.protocol.chat.ChatHistory
+
 import pl.syntaxdevteam.craftconnect.domain.model.MinecraftVersion
 import java.io.ByteArrayInputStream
 import java.io.BufferedInputStream
@@ -37,9 +41,12 @@ import pl.syntaxdevteam.craftconnect.protocol.legacy.readVarInt
 import pl.syntaxdevteam.craftconnect.protocol.legacy.writeProtocolString
 import pl.syntaxdevteam.craftconnect.protocol.legacy.writeVarInt
 
-/** Headless offline-mode adapter for Minecraft Java 26.1–26.3. */
+/** Headless offline/online-mode adapter for Minecraft Java 26.1–26.3. */
 class ModernOfflineMinecraftConnection(
     private val connectTimeoutMillis: Int = 15_000,
+    private val joinSession: suspend (MinecraftIdentity, String) -> Unit = { _, _ ->
+        throw MinecraftConnectionException.Authentication("premium_not_configured")
+    },
 ) : MinecraftConnection {
     private var version = MinecraftVersion.JAVA_26_1
     private var connectionStage = "resolve"
@@ -49,7 +56,7 @@ class ModernOfflineMinecraftConnection(
     private val chatTypes = ServerChatTypes()
     private val playerList = ServerPlayerList()
     override val players = playerList.players
-    private val chatHistory = pl.syntaxdevteam.craftconnect.protocol.chat.ChatHistory()
+    private val chatHistory = ChatHistory()
     override val chatMessages = chatHistory.messages
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val visibilityCommands = JoinVisibilityCommands(scope, ::sendCommand, sendAuthenticationRequest = ::sendAuthenticationSubscription)
@@ -60,8 +67,8 @@ class ModernOfflineMinecraftConnection(
     private val mutableConnectionFailures = MutableStateFlow<MinecraftConnectionException?>(null)
     override val connectionFailures = mutableConnectionFailures.filterNotNull()
     private var socket: Socket? = null
-    private var input: BufferedInputStream? = null
-    private var output: BufferedOutputStream? = null
+    private var input: java.io.InputStream? = null
+    private var output: java.io.OutputStream? = null
     private var compressionThreshold: Int? = null
     private var readerJob: Job? = null
     private var x = 0.0
@@ -70,7 +77,12 @@ class ModernOfflineMinecraftConnection(
     private var yaw = 0f
     private var pitch = 0f
 
-    override suspend fun connect(server: ServerProfile, username: String): ConnectedSession = withContext(Dispatchers.IO) {
+    override suspend fun connect(server: ServerProfile, username: String): ConnectedSession = connect(server, username, null)
+
+    override suspend fun connect(server: ServerProfile, identity: MinecraftIdentity): ConnectedSession =
+        connect(server, identity.username, identity)
+
+    private suspend fun connect(server: ServerProfile, username: String, identity: MinecraftIdentity?): ConnectedSession = withContext(Dispatchers.IO) {
         mutableConnectionFailures.value = null
         version = server.minecraftVersion
         connectionStage = "resolve"
@@ -91,8 +103,8 @@ class ModernOfflineMinecraftConnection(
 
             connectionStage = "login"
             sendHandshake(endpoint)
-            sendLoginStart(username)
-            val session = awaitLoginSuccess()
+            sendLoginStart(username, identity?.uuid)
+            val session = awaitLoginSuccess(identity)
             sendPacket(packet { writeVarInt(LOGIN_ACKNOWLEDGED) })
             connectionStage = "configuration"
             sendClientSettings(CONFIGURATION_CLIENT_SETTINGS)
@@ -102,6 +114,12 @@ class ModernOfflineMinecraftConnection(
             connectedSocket.soTimeout = 0
             readerJob = scope.launch { playLoop() }
             session
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            closeResources()
+            throw cancelled
+        } catch (failure: AuthenticationException) {
+            closeResources()
+            throw MinecraftConnectionException.Authentication("premium_${failure.problem.name.lowercase()}")
         } catch (failure: MinecraftConnectionException) {
             closeResources()
             throw failure
@@ -192,13 +210,15 @@ class ModernOfflineMinecraftConnection(
         writeVarInt(LOGIN_STATE)
     })
 
-    private fun sendLoginStart(username: String) = sendPacket(packet {
+    private fun sendLoginStart(username: String, profileId: String?) = sendPacket(packet {
         writeVarInt(LOGIN_START)
         writeProtocolString(username)
-        writeUuid(offlineUuid(username))
+        writeUuid(profileId?.let { uuidFromProfile(it) } ?: offlineUuid(username))
     })
 
-    private fun awaitLoginSuccess(): ConnectedSession {
+    private suspend fun awaitLoginSuccess(identity: MinecraftIdentity?): ConnectedSession {
+        var encrypted = false
+        var authenticated = false
         while (open.get()) {
             val packetInput = readPacket(requireInput(), compressionThreshold)
             when (val packetId = packetInput.readVarInt().also { packetTrace.record("i", it) }) {
@@ -215,6 +235,9 @@ class ModernOfflineMinecraftConnection(
                         if (packetInput.readBoolean()) packetInput.readProtocolString()
                     }
                     if (version.protocol >= 776) packetInput.readUuid() // Login session ID
+                    if (identity != null && (!authenticated || uuid != uuidFromProfile(identity.uuid) || username != identity.username)) {
+                        throw MinecraftConnectionException.Authentication("premium_server_identity_mismatch")
+                    }
                     return ConnectedSession(version.protocol, username, uuid.toString())
                 }
                 SET_COMPRESSION -> compressionThreshold = packetInput.readVarInt().also {
@@ -222,7 +245,25 @@ class ModernOfflineMinecraftConnection(
                 }
                 LOGIN_PLUGIN_REQUEST -> rejectLoginPlugin(packetInput)
                 0x05 -> commonRequests.replyCookie(packetInput, 0x04)
-                0x01 -> throw MinecraftConnectionException.Authentication("online_mode_requires_microsoft")
+                0x01 -> {
+                    if (encrypted) throw MinecraftConnectionException.Protocol("duplicate_encryption_request")
+                    val account = identity ?: throw MinecraftConnectionException.Authentication("online_mode_requires_microsoft")
+                    val encryption = OnlineLoginEncryption(packetInput)
+                    if (!encryption.shouldAuthenticate) throw MinecraftConnectionException.Authentication("premium_requires_online_server")
+                    joinSession(account, encryption.serverHash)
+                    val secret = encryption.encryptedSecret()
+                    val challenge = encryption.encryptedChallenge()
+                    sendPacket(packet {
+                        writeVarInt(0x01)
+                        writeVarInt(secret.size); write(secret)
+                        writeVarInt(challenge.size); write(challenge)
+                    })
+                    // Wrap the existing buffered input: it may already contain encrypted bytes.
+                    input = javax.crypto.CipherInputStream(requireInput(), encryption.streamCipher(javax.crypto.Cipher.DECRYPT_MODE))
+                    output = javax.crypto.CipherOutputStream(requireOutput(), encryption.streamCipher(javax.crypto.Cipher.ENCRYPT_MODE))
+                    encrypted = true
+                    authenticated = true
+                }
                 else -> throw MinecraftConnectionException.Protocol("unexpected_login_packet_$packetId")
             }
         }
@@ -526,3 +567,9 @@ private fun String.minecraftText(): String =
 
 
 
+
+private fun uuidFromProfile(id: String): UUID {
+    val compact = id.replace("-", "")
+    require(Regex("[a-fA-F0-9]{32}").matches(compact))
+    return UUID.fromString("${compact.substring(0, 8)}-${compact.substring(8, 12)}-${compact.substring(12, 16)}-${compact.substring(16, 20)}-${compact.substring(20)}")
+}

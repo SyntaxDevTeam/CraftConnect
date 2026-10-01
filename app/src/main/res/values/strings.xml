@@ -13,7 +13,6 @@
     <string name="offline_accounts">Non-premium accounts</string>
     <string name="offline_account">Non-premium · offline mode</string>
     <string name="microsoft_accounts">Premium accounts (Microsoft)</string>
-    <string name="microsoft_accounts_coming_soon">Microsoft authentication will be available in a future release.</string>
     <string name="add_offline_account">Add non-premium account</string>
     <string name="edit_account">Edit account</string>
     <string name="delete_account">Delete account</string>
@@ -21,7 +20,7 @@
     <string name="no_offline_accounts">No non-premium accounts yet. Use + to add one.</string>
     <string name="invalid_offline_username">Use 3–16 letters, digits or underscores.</string>
     <string name="duplicate_offline_username">An account with this username already exists.</string>
-    <string name="account_required">Add a non-premium account in Account manager before connecting.</string>
+    <string name="account_required">Add an account in Account manager before connecting.</string>
     <string name="choose_saved_account">Saved account:</string>
     <string name="search_servers">Search servers…</string>
     <string name="search_players">Search players…</string>
@@ -92,7 +91,7 @@
     <string name="chat_empty">Waiting for server messages…</string>
     <string name="minecraft_version">Minecraft Java version</string>
     <string name="minecraft_version_value">%1$s (protocol %2$d)</string>
-    <string name="selected_protocol_notice">Uses Minecraft Java %1$s protocol (%2$d). The server must allow offline-mode logins.</string>
+    <string name="selected_protocol_notice">Uses Minecraft Java %1$s protocol (%2$d). Choose a Microsoft account for online-mode servers.</string>
     <string name="players_empty">Waiting for the server player list…</string>
     <string name="players_disconnected">Connect to a server to view its players.</string>
     <string name="players_no_matches">No players match your search.</string>
@@ -102,6 +101,27 @@
     <string name="session_notification_connecting">Connecting to the Minecraft server…</string>
     <string name="session_notification_connected">Active connection: %1$s</string>
     <string name="session_disconnect">Disconnect</string>
+    <string name="microsoft_sign_in">Sign in with Microsoft</string>
+    <string name="microsoft_sign_in_description">Add an account with Minecraft: Java Edition to connect to online-mode servers. Enter your password only on the Microsoft website.</string>
+    <string name="microsoft_starting">Preparing Microsoft sign-in…</string>
+    <string name="microsoft_device_instructions">Open Microsoft sign-in, enter this code, then return here. Only use the code for your own account.</string>
+    <string name="microsoft_open_browser">Open Microsoft sign-in</string>
+    <string name="microsoft_added">Account %1$s added.</string>
+    <string name="microsoft_add_another">Add another Microsoft account</string>
+    <string name="microsoft_retry">Try sign-in again</string>
+    <string name="microsoft_premium_account">Microsoft · Premium</string>
+    <string name="account_choice_label">%1$s · %2$s</string>
+    <string name="microsoft_error_network">Could not reach the sign-in service. Check your connection and try again.</string>
+    <string name="microsoft_error_expired">The sign-in code expired. Start sign-in again.</string>
+    <string name="microsoft_error_declined">Sign-in was declined. You can try again when ready.</string>
+    <string name="microsoft_error_configuration">Microsoft sign-in is not configured for this app yet. The publisher must enable personal Microsoft accounts and public client sign-in.</string>
+    <string name="microsoft_error_approval">Minecraft services refused this app. CraftConnect may still be awaiting Mojang approval.</string>
+    <string name="microsoft_error_license">This account has no active Minecraft: Java Edition entitlement.</string>
+    <string name="microsoft_error_profile">No Java Edition player profile was found. Complete your profile on minecraft.net.</string>
+    <string name="microsoft_error_xbox">Xbox sign-in was refused. Check your Xbox profile, family permissions, and account restrictions.</string>
+    <string name="microsoft_error_reauthenticate">Your saved session is no longer valid. Sign in with Microsoft again in Accounts.</string>
+    <string name="microsoft_error_storage">The account could not be saved securely on this device. Try again.</string>
+    <string name="microsoft_error_response">Sign-in could not be completed. Please try again.</string>
 </resources>
 
 
