@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.util.Base64
+import pl.syntaxdevteam.craftconnect.domain.model.MinecraftVersion
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
 
 internal object ServerListCodec {
@@ -18,6 +19,7 @@ internal object ServerListCodec {
                     output.writeUTF(server.name)
                     output.writeUTF(server.address)
                     output.writeBoolean(server.favorite)
+                    output.writeUTF(server.minecraftVersion.name)
                 }
             }
             buffer.toByteArray()
@@ -28,7 +30,8 @@ internal object ServerListCodec {
     fun decode(encoded: String): List<ServerProfile> = runCatching {
         val bytes = Base64.getDecoder().decode(encoded)
         DataInputStream(ByteArrayInputStream(bytes)).use { input ->
-            require(input.readInt() == FORMAT_VERSION) { "Unsupported server-list format" }
+            val version = input.readInt()
+            require(version in 1..FORMAT_VERSION) { "Unsupported server-list format" }
             val count = input.readInt()
             require(count in 0..MAX_SERVERS) { "Invalid server count" }
             List(count) {
@@ -41,11 +44,13 @@ internal object ServerListCodec {
                     playersMax = 0,
                     pingMs = null,
                     favorite = input.readBoolean(),
+                    minecraftVersion = if (version >= 2) MinecraftVersion.fromKey(input.readUTF()) else MinecraftVersion.JAVA_26_1,
                 )
             }
         }
     }.getOrDefault(emptyList())
 
-    private const val FORMAT_VERSION = 1
+    private const val FORMAT_VERSION = 2
     private const val MAX_SERVERS = 1_000
 }
+

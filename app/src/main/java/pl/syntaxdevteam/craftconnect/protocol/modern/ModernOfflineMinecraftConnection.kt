@@ -1,5 +1,6 @@
 package pl.syntaxdevteam.craftconnect.protocol.modern
 
+import pl.syntaxdevteam.craftconnect.domain.model.MinecraftVersion
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
@@ -36,6 +37,8 @@ import pl.syntaxdevteam.craftconnect.protocol.legacy.writeVarInt
 class ModernOfflineMinecraftConnection(
     private val connectTimeoutMillis: Int = 15_000,
 ) : MinecraftConnection {
+    private var version = MinecraftVersion.JAVA_26_1
+    private var connectionStage = "resolve"
     private val addressResolver = MinecraftServerAddressResolver()
     private val chatHistory = pl.syntaxdevteam.craftconnect.protocol.chat.ChatHistory()
     override val chatMessages = chatHistory.messages
@@ -57,21 +60,26 @@ class ModernOfflineMinecraftConnection(
     private var pitch = 0f
 
     override suspend fun connect(server: ServerProfile, username: String): ConnectedSession = withContext(Dispatchers.IO) {
+        version = server.minecraftVersion
+        connectionStage = "resolve"
         chatHistory.clear()
         validateUsername(username)
         val endpoint = addressResolver.resolve(server.address)
         try {
+            connectionStage = "tcp"
             val connectedSocket = openSocket(endpoint)
             socket = connectedSocket
             input = BufferedInputStream(connectedSocket.getInputStream())
             output = BufferedOutputStream(connectedSocket.getOutputStream())
             open.set(true)
 
+            connectionStage = "login"
             sendHandshake(endpoint)
             sendLoginStart(username)
             val session = awaitLoginSuccess()
             sendPacket(packet { writeVarInt(LOGIN_ACKNOWLEDGED) })
             sendClientSettings(CONFIGURATION_CLIENT_SETTINGS)
+            connectionStage = "configuration"
             awaitConfiguration()
             connectedSocket.soTimeout = 0
             readerJob = scope.launch { playLoop() }
@@ -84,7 +92,7 @@ class ModernOfflineMinecraftConnection(
             throw MinecraftConnectionException.Protocol(failure.code, failure)
         } catch (failure: Exception) {
             closeResources()
-            throw MinecraftConnectionException.Network("connection_failed", failure)
+            throw MinecraftConnectionException.Network("connection_${connectionStage}_failed_p${version.protocol}", failure)
         }
     }
 
@@ -160,7 +168,7 @@ class ModernOfflineMinecraftConnection(
 
     private fun sendHandshake(endpoint: MinecraftServerEndpoint) = sendPacket(packet {
         writeVarInt(HANDSHAKE)
-        writeVarInt(PROTOCOL_VERSION)
+        writeVarInt(version.protocol)
         writeProtocolString(endpoint.handshakeHost)
         writeShort(endpoint.handshakePort)
         writeVarInt(LOGIN_STATE)
@@ -188,12 +196,14 @@ class ModernOfflineMinecraftConnection(
                         packetInput.readProtocolString()
                         if (packetInput.readBoolean()) packetInput.readProtocolString()
                     }
-                    return ConnectedSession(PROTOCOL_VERSION, username, uuid.toString())
+                    if (version.protocol >= 776) packetInput.readUuid() // Login session ID
+                    return ConnectedSession(version.protocol, username, uuid.toString())
                 }
                 SET_COMPRESSION -> compressionThreshold = packetInput.readVarInt().also {
                     if (it < 0) throw MinecraftConnectionException.Protocol("invalid_compression_threshold")
                 }
                 LOGIN_PLUGIN_REQUEST -> rejectLoginPlugin(packetInput)
+                0x01 -> throw MinecraftConnectionException.Authentication("online_mode_requires_microsoft")
                 else -> throw MinecraftConnectionException.Protocol("unexpected_login_packet_$packetId")
             }
         }
@@ -212,10 +222,10 @@ class ModernOfflineMinecraftConnection(
     private fun awaitConfiguration() {
         while (open.get()) {
             val packetInput = readPacket(requireInput(), compressionThreshold)
-            when (packetInput.readVarInt()) {
+            when (packetInput.readVarInt().let { if (version == MinecraftVersion.JAVA_26_3 && it >= 10) it - 1 else it }) {
                 CONFIGURATION_DISCONNECT -> throw MinecraftConnectionException.Authentication(
                     "configuration_rejected",
-                    "Server disconnected during configuration",
+                    packetInput.readAnonymousNbt().chatText().take(512),
                 )
                 CONFIGURATION_FINISH -> {
                     sendPacket(packet { writeVarInt(SERVERBOUND_CONFIGURATION_FINISH) })
@@ -250,9 +260,9 @@ class ModernOfflineMinecraftConnection(
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
-                    0x79 -> runCatching { packetInput.readSystemChat() }.getOrNull()?.let(chatHistory::append)
+                    systemChatId -> runCatching { packetInput.readSystemChat() }.getOrNull()?.let(chatHistory::append)
                     0x21 -> runCatching { packetInput.readProfilelessChat() }.getOrNull()?.let(chatHistory::append)
-                    0x41 -> {
+                    playerChatId -> {
                         val chat = runCatching { packetInput.readPlayerChat() }.getOrNull()
                         if (chat != null) {
                             chatHistory.append(chat.text)
@@ -272,17 +282,17 @@ class ModernOfflineMinecraftConnection(
                             }
                         }
                     }
-                    CLIENTBOUND_JOIN_GAME -> readInitialGameMode(packetInput)
-                    CLIENTBOUND_GAME_STATE -> {
+                    joinGameId -> readInitialGameMode(packetInput)
+                    gameStateId -> {
                         val reason = packetInput.readUnsignedByte()
                         val value = packetInput.readFloat()
                         if (reason == 3) visibilityCommands.onGameMode(value.toInt())
                     }
-                    CLIENTBOUND_KEEP_ALIVE -> respondLong(SERVERBOUND_KEEP_ALIVE, packetInput.readLong())
-                    CLIENTBOUND_POSITION -> acknowledgePosition(packetInput)
+                    keepAliveId -> respondLong(SERVERBOUND_KEEP_ALIVE, packetInput.readLong())
+                    positionId -> acknowledgePosition(packetInput)
                     CLIENTBOUND_DISCONNECT -> closeResources()
-                    CLIENTBOUND_CLEAR_DIALOG -> mutableDialogEvents.tryEmit(ServerDialogEvent.Clear)
-                    CLIENTBOUND_SHOW_DIALOG -> runCatching { packetInput.readServerDialog() }
+                    clearDialogId -> mutableDialogEvents.tryEmit(ServerDialogEvent.Clear)
+                    showDialogId -> runCatching { packetInput.readServerDialog() }
                         .getOrNull()
                         ?.let { mutableDialogEvents.tryEmit(ServerDialogEvent.Show(it)) }
                 }
@@ -303,7 +313,7 @@ class ModernOfflineMinecraftConnection(
         input.readVarInt()
         input.readProtocolString()
         input.readLong()
-        visibilityCommands.onGameMode(input.readUnsignedByte())
+        visibilityCommands.onGameMode(if (version == MinecraftVersion.JAVA_26_3) input.readVarInt() else input.readUnsignedByte())
     }
 
     private fun acknowledgePosition(input: DataInputStream) {
@@ -322,7 +332,13 @@ class ModernOfflineMinecraftConnection(
         z = if (flags and RELATIVE_Z != 0) z + receivedZ else receivedZ
         yaw = if (flags and RELATIVE_YAW != 0) yaw + receivedYaw else receivedYaw
         pitch = if (flags and RELATIVE_PITCH != 0) pitch + receivedPitch else receivedPitch
-        sendPacket(packet { writeVarInt(SERVERBOUND_TELEPORT_CONFIRM); writeVarInt(teleportId) })
+        sendPacket(packet {
+            writeVarInt(SERVERBOUND_TELEPORT_CONFIRM); writeVarInt(teleportId)
+            if (version == MinecraftVersion.JAVA_26_3) {
+                writeDouble(x); writeDouble(y); writeDouble(z)
+                writeFloat(yaw); writeFloat(pitch)
+            }
+        })
         sendPacket(packet {
             writeVarInt(SERVERBOUND_POSITION_LOOK)
             writeDouble(x); writeDouble(y); writeDouble(z)
@@ -378,6 +394,15 @@ class ModernOfflineMinecraftConnection(
     private fun validateUsername(username: String) {
         if (!USERNAME.matches(username)) throw MinecraftConnectionException.Authentication("invalid_offline_username")
     }
+
+    private val joinGameId get() = if (version == MinecraftVersion.JAVA_26_3) 0x32 else 0x31
+    private val gameStateId get() = if (version == MinecraftVersion.JAVA_26_3) 0x27 else 0x26
+    private val keepAliveId get() = if (version == MinecraftVersion.JAVA_26_3) 0x2D else 0x2C
+    private val positionId get() = if (version == MinecraftVersion.JAVA_26_3) 0x49 else 0x48
+    private val playerChatId get() = if (version == MinecraftVersion.JAVA_26_3) 0x42 else 0x41
+    private val systemChatId get() = if (version == MinecraftVersion.JAVA_26_3) 0x7C else 0x79
+    private val clearDialogId get() = if (version == MinecraftVersion.JAVA_26_3) 0x8E else 0x8B
+    private val showDialogId get() = if (version == MinecraftVersion.JAVA_26_3) 0x8F else 0x8C
 
     private companion object {
         const val PROTOCOL_VERSION = 775
@@ -437,3 +462,4 @@ private fun java.io.DataOutputStream.writeUuid(uuid: UUID) { writeLong(uuid.most
 private fun String.minecraftText(): String =
     (Regex("\"text\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"").find(this)?.groupValues?.get(1) ?: take(512))
         .replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\").take(512)
+

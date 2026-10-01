@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import pl.syntaxdevteam.craftconnect.data.DemoRepository
+import pl.syntaxdevteam.craftconnect.domain.model.MinecraftVersion
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
 import pl.syntaxdevteam.craftconnect.domain.server.ServerRepository
 
@@ -22,7 +23,7 @@ class SharedPreferencesServerRepository internal constructor(
     override val servers: StateFlow<List<ServerProfile>> = mutableServers.asStateFlow()
 
     @Synchronized
-    override fun create(name: String, address: String, favorite: Boolean): ServerProfile {
+    override fun create(name: String, address: String, favorite: Boolean, minecraftVersion: MinecraftVersion): ServerProfile {
         val server = ServerProfile(
             id = createId(),
             name = name.trim().also { require(it.isNotEmpty()) { "Server name is required" } },
@@ -32,6 +33,7 @@ class SharedPreferencesServerRepository internal constructor(
             playersMax = 0,
             pingMs = null,
             favorite = favorite,
+            minecraftVersion = minecraftVersion,
         )
         publish(mutableServers.value + server)
         return server
@@ -84,3 +86,4 @@ private class SharedPreferencesServerStorage(
         const val KEY_SERVERS = "servers"
     }
 }
+

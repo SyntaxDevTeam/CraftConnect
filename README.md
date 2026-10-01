@@ -75,3 +75,17 @@ Validation:
 ./gradlew :app:assembleDebug
 ./gradlew :app:lintDebug
 ```
+
+
+## Per-server Minecraft version
+
+Server creation and editing offer Java 26.1 (775), 26.2 (776), and 26.3 (777).
+New servers default to 26.3; existing lists retain 26.1 until edited.
+The selection controls the handshake, login session ID, configuration and play packet
+IDs, game-mode decoding, and teleport confirmation layout. It is not automatic
+version detection. Offline authentication limitations still apply.
+Connection failures display a diagnostic code containing the stage and protocol.
+
+Packet references: ViaVersion `Protocol26_1To26_2`, `Protocol26_2To26_3`,
+`ClientboundConfigurationPackets26_3`, `ClientboundPackets26_3`, and
+`EntityPacketRewriter26_3` in https://github.com/ViaVersion/ViaVersion.

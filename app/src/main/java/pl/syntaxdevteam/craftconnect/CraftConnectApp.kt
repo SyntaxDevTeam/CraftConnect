@@ -86,8 +86,8 @@ fun CraftConnectApp(
                         connectionState = connectionState,
                         connectionError = connectionError,
                         accounts = savedAccounts,
-                        onCreate = { name, address, favorite ->
-                            serverRepository.create(name, address, favorite)
+                        onCreate = { name, address, favorite, version ->
+                            serverRepository.create(name, address, favorite, version)
                         },
                         onUpdate = serverRepository::update,
                         onDelete = serverRepository::delete,
@@ -100,7 +100,9 @@ fun CraftConnectApp(
                                 connectionError = null
                                 manager.connect(server, username)
                                 connectionState = manager.session.value.connectionState
-                                connectionError = manager.session.value.lastError?.serverMessage
+                                connectionError = manager.session.value.lastError?.let { error ->
+                                    listOfNotNull(error.serverMessage, error.diagnosticCode).distinct().joinToString("\n")
+                                }
                                 if (connectionState == ConnectionState.CONNECTED) {
                                     activeServer = server.copy(online = true)
                                     destination = AppDestination.Chat
@@ -141,4 +143,5 @@ fun CraftConnectApp(
         }
     }
 }
+
 

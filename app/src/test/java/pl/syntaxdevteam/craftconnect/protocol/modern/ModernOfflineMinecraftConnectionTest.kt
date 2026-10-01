@@ -10,6 +10,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
+import pl.syntaxdevteam.craftconnect.domain.model.MinecraftVersion
 import pl.syntaxdevteam.craftconnect.protocol.legacy.frame
 import pl.syntaxdevteam.craftconnect.protocol.legacy.packet
 import pl.syntaxdevteam.craftconnect.protocol.legacy.readPacket
@@ -20,7 +21,13 @@ import pl.syntaxdevteam.craftconnect.protocol.legacy.writeVarInt
 
 class ModernOfflineMinecraftConnectionTest {
     @Test
-    fun completesLoginConfigurationAndPlayKeepAlive() = runBlocking {
+    fun completesLoginConfigurationAndPlayKeepAlive() = verifyVersion(MinecraftVersion.JAVA_26_1)
+
+    @Test fun connectsWith26_2() = verifyVersion(MinecraftVersion.JAVA_26_2)
+    @Test fun connectsWith26_3() = verifyVersion(MinecraftVersion.JAVA_26_3)
+
+    private fun verifyVersion(version: MinecraftVersion) = runBlocking {
+        val latest = version == MinecraftVersion.JAVA_26_3
         ServerSocket(0).use { serverSocket ->
             val server = async(Dispatchers.IO) {
                 serverSocket.accept().use { client ->
@@ -29,7 +36,7 @@ class ModernOfflineMinecraftConnectionTest {
                     val output = client.getOutputStream()
                     readPacket(input, null).also {
                         assertEquals(0, it.readVarInt())
-                        assertEquals(775, it.readVarInt())
+                        assertEquals(version.protocol, it.readVarInt())
                         it.readProtocolString()
                         it.readUnsignedShort()
                         assertEquals(2, it.readVarInt())
@@ -45,17 +52,18 @@ class ModernOfflineMinecraftConnectionTest {
                         writeLong(uuid.leastSignificantBits)
                         writeProtocolString("OfflineUser")
                         writeVarInt(0)
+                        if (version.protocol >= 776) { writeLong(0); writeLong(0) }
                     }, null))
                     output.flush()
                     assertEquals(3, readPacket(input, null).readVarInt())
                     assertEquals(0, readPacket(input, null).readVarInt())
 
                     output.write(frame(packet {
-                        writeVarInt(0x0E)
+                        writeVarInt(if (latest) 0x0F else 0x0E)
                         writeVarInt(1)
                         writeProtocolString("minecraft")
                         writeProtocolString("core")
-                        writeProtocolString("26.1")
+                        writeProtocolString(version.label)
                     }, null))
                     output.flush()
                     val knownPacks = readPacket(input, null)
@@ -63,16 +71,16 @@ class ModernOfflineMinecraftConnectionTest {
                     assertEquals(1, knownPacks.readVarInt())
                     assertEquals("minecraft", knownPacks.readProtocolString())
                     assertEquals("core", knownPacks.readProtocolString())
-                    assertEquals("26.1", knownPacks.readProtocolString())
+                    assertEquals(version.label, knownPacks.readProtocolString())
 
                     output.write(frame(packet { writeVarInt(3) }, null))
                     output.flush()
                     assertEquals(3, readPacket(input, null).readVarInt())
 
                     output.write(frame(packet {
-                        writeVarInt(0x79); writeByte(8); writeUTF("Welcome before UI"); writeBoolean(false)
+                        writeVarInt(if (latest) 0x7C else 0x79); writeByte(8); writeUTF("Welcome before UI"); writeBoolean(false)
                     }, null))
-                    output.write(frame(packet { writeVarInt(0x2C); writeLong(987_654_321L) }, null))
+                    output.write(frame(packet { writeVarInt(if (latest) 0x2D else 0x2C); writeLong(987_654_321L) }, null))
                     output.flush()
                     val keepAlive = readPacket(input, null)
                     assertEquals(0x1C, keepAlive.readVarInt())
@@ -80,7 +88,7 @@ class ModernOfflineMinecraftConnectionTest {
                     // No visibility command is sent at protocol login. Only after
                     // world readiness and an API-backed bridge confirmation.
                     output.write(frame(packet {
-                        writeVarInt(0x48)
+                        writeVarInt(if (latest) 0x49 else 0x48)
                         writeVarInt(42)
                         writeDouble(1.0); writeDouble(64.0); writeDouble(2.0)
                         repeat(3) { writeDouble(0.0) }
@@ -88,7 +96,17 @@ class ModernOfflineMinecraftConnectionTest {
                         writeInt(0)
                     }, null))
                     output.flush()
-                    assertEquals(0, readPacket(input, null).readVarInt())
+                    val confirmation = readPacket(input, null)
+                    assertEquals(0, confirmation.readVarInt())
+                    assertEquals(42, confirmation.readVarInt())
+                    if (latest) {
+                        assertEquals(1.0, confirmation.readDouble(), 0.0)
+                        assertEquals(64.0, confirmation.readDouble(), 0.0)
+                        assertEquals(2.0, confirmation.readDouble(), 0.0)
+                        assertEquals(0f, confirmation.readFloat(), 0f)
+                        assertEquals(0f, confirmation.readFloat(), 0f)
+                    }
+                    assertEquals(0, confirmation.available())
                     assertEquals(0x1F, readPacket(input, null).readVarInt())
                     val registration = readPacket(input, null)
                     assertEquals(0x16, registration.readVarInt())
@@ -107,19 +125,19 @@ class ModernOfflineMinecraftConnectionTest {
                     val command = readPacket(input, null)
                     assertEquals(0x07, command.readVarInt())
                     assertEquals("gamemode spectator", command.readProtocolString())
-                    output.write(frame(packet { writeVarInt(0x26); writeByte(3); writeFloat(3f) }, null))
+                    output.write(frame(packet { writeVarInt(if (latest) 0x27 else 0x26); writeByte(3); writeFloat(3f) }, null))
                     output.flush()
 
                 }
             }
             val connection = ModernOfflineMinecraftConnection(2_000)
             val profile = ServerProfile(
-                "test", "Test", "127.0.0.1:${serverSocket.localPort}", false, 0, 0, null,
+                "test", "Test", "127.0.0.1:${serverSocket.localPort}", false, 0, 0, null, minecraftVersion = version,
             )
 
             val session = connection.connect(profile, "OfflineUser")
 
-            assertEquals(775, session.protocolVersion)
+            assertEquals(version.protocol, session.protocolVersion)
             assertEquals("OfflineUser", session.username)
             withTimeout(5_000) { server.await() }
             assertEquals("Welcome before UI", connection.chatMessages.value.first().content)
@@ -127,4 +145,5 @@ class ModernOfflineMinecraftConnectionTest {
         }
     }
 }
+
 

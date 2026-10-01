@@ -9,6 +9,7 @@ data class ServerProfile(
     val playersMax: Int,
     val pingMs: Int?,
     val favorite: Boolean = false,
+    val minecraftVersion: MinecraftVersion = MinecraftVersion.JAVA_26_1,
 )
 
 enum class PlayerRole {
@@ -60,3 +61,4 @@ sealed interface ServerDialogEvent {
     data class Show(val dialog: ServerDialogRequest) : ServerDialogEvent
     data object Clear : ServerDialogEvent
 }
+

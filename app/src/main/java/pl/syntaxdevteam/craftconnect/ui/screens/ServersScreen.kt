@@ -20,6 +20,10 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.foundation.layout.Box
+import pl.syntaxdevteam.craftconnect.domain.model.MinecraftVersion
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
@@ -60,7 +64,7 @@ fun ServersScreen(
     connectionState: ConnectionState,
     connectionError: String?,
     accounts: List<AccountProfile>,
-    onCreate: (name: String, address: String, favorite: Boolean) -> Unit,
+    onCreate: (name: String, address: String, favorite: Boolean, version: MinecraftVersion) -> Unit,
     onUpdate: (ServerProfile) -> Unit,
     onDelete: (String) -> Unit,
     onConnect: (ServerProfile, String) -> Unit,
@@ -160,6 +164,7 @@ fun ServersScreen(
     connectionTarget?.let { target ->
         OfflineConnectDialog(
             initialAddress = target.address,
+            version = target.minecraftVersion,
             connecting = connectionState == ConnectionState.CONNECTING,
             failed = connectionState == ConnectionState.FAILED,
             connectionError = connectionError,
@@ -173,12 +178,12 @@ fun ServersScreen(
         ServerEditorDialog(
             server = editorTarget,
             onDismiss = { editorVisible = false },
-            onSave = { name, address, favorite ->
+            onSave = { name, address, favorite, version ->
                 val target = editorTarget
                 if (target == null) {
-                    onCreate(name, address, favorite)
+                    onCreate(name, address, favorite, version)
                 } else {
-                    onUpdate(target.copy(name = name, address = address, favorite = favorite))
+                    onUpdate(target.copy(name = name, address = address, favorite = favorite, minecraftVersion = version))
                 }
                 editorVisible = false
             },
@@ -201,10 +206,12 @@ fun ServersScreen(
 private fun ServerEditorDialog(
     server: ServerProfile?,
     onDismiss: () -> Unit,
-    onSave: (String, String, Boolean) -> Unit,
+    onSave: (String, String, Boolean, MinecraftVersion) -> Unit,
 ) {
     var name by remember(server) { mutableStateOf(server?.name.orEmpty()) }
     var address by remember(server) { mutableStateOf(server?.address.orEmpty()) }
+    var version by remember(server) { mutableStateOf(server?.minecraftVersion ?: MinecraftVersion.JAVA_26_3) }
+    var versionMenu by remember { mutableStateOf(false) }
     var favorite by remember(server) { mutableStateOf(server?.favorite ?: false) }
     var validationVisible by remember(server) { mutableStateOf(false) }
     val valid = name.isNotBlank() && address.isNotBlank()
@@ -228,6 +235,18 @@ private fun ServerEditorDialog(
                     label = { Text(stringResource(R.string.server_address)) },
                     singleLine = true,
                 )
+                Text(stringResource(R.string.minecraft_version))
+                Box {
+                    GlowButton(stringResource(R.string.minecraft_version_value, version.label, version.protocol), onClick = { versionMenu = true })
+                    DropdownMenu(expanded = versionMenu, onDismissRequest = { versionMenu = false }) {
+                        MinecraftVersion.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.minecraft_version_value, option.label, option.protocol)) },
+                                onClick = { version = option; versionMenu = false },
+                            )
+                        }
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = favorite, onCheckedChange = { favorite = it })
                     Text(stringResource(R.string.favorite_server))
@@ -240,7 +259,7 @@ private fun ServerEditorDialog(
         confirmButton = {
             GlowButton(stringResource(R.string.save), onClick = {
                 validationVisible = true
-                if (valid) onSave(name.trim(), address.trim(), favorite)
+                if (valid) onSave(name.trim(), address.trim(), favorite, version)
             })
         },
         dismissButton = { GlowButton(stringResource(R.string.cancel), onClick = onDismiss) },
@@ -267,6 +286,7 @@ private fun DeleteServerDialog(
 @Composable
 private fun OfflineConnectDialog(
     initialAddress: String,
+    version: MinecraftVersion,
     connecting: Boolean,
     failed: Boolean,
     connectionError: String?,
@@ -308,7 +328,7 @@ private fun OfflineConnectDialog(
                         }
                     }
                 }
-                Text(stringResource(R.string.modern_protocol_notice), color = TextSecondary, fontSize = 12.sp)
+                Text(stringResource(R.string.selected_protocol_notice, version.label, version.protocol), color = TextSecondary, fontSize = 12.sp)
                 if (failed) {
                     Text(
                         connectionError ?: stringResource(R.string.connection_failed),
@@ -379,6 +399,7 @@ private fun ServerRow(
                         )
                     }
                 }
+                Text(stringResource(R.string.minecraft_version_value, server.minecraftVersion.label, server.minecraftVersion.protocol), color = TextSecondary, fontSize = 11.sp)
                 Text(server.address, color = TextSecondary, fontSize = 12.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     StatusDot(server.online)
@@ -397,3 +418,4 @@ private fun ServerRow(
         }
     }
 }
+
