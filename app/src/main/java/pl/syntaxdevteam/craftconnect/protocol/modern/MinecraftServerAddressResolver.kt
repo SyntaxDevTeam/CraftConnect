@@ -1,11 +1,18 @@
 package pl.syntaxdevteam.craftconnect.protocol.modern
 
 import java.net.InetAddress
+import java.net.URL
+import javax.net.ssl.HttpsURLConnection
 import kotlin.random.Random
 import org.xbill.DNS.AAAARecord
 import org.xbill.DNS.ARecord
+import org.xbill.DNS.DClass
 import org.xbill.DNS.Lookup
+import org.xbill.DNS.Message
+import org.xbill.DNS.Name
+import org.xbill.DNS.Record
 import org.xbill.DNS.SRVRecord
+import org.xbill.DNS.Section
 import org.xbill.DNS.Type
 
 internal data class MinecraftServerEndpoint(
@@ -111,7 +118,7 @@ internal class MinecraftServerAddressResolver(
 }
 
 private fun lookupMinecraftSrv(name: String): List<SrvTarget> =
-    Lookup(name, Type.SRV).run().orEmpty().filterIsInstance<SRVRecord>().map { record ->
+    lookupRecords(name, Type.SRV).filterIsInstance<SRVRecord>().map { record ->
         SrvTarget(
             host = record.target.toString(),
             port = record.port,
@@ -121,6 +128,50 @@ private fun lookupMinecraftSrv(name: String): List<SrvTarget> =
     }
 
 private fun lookupHostAddresses(host: String): List<InetAddress> = buildList {
-    Lookup(host, Type.A).run().orEmpty().filterIsInstance<ARecord>().forEach { add(it.address) }
-    Lookup(host, Type.AAAA).run().orEmpty().filterIsInstance<AAAARecord>().forEach { add(it.address) }
+    lookupRecords(host, Type.A).filterIsInstance<ARecord>().forEach { add(it.address) }
+    lookupRecords(host, Type.AAAA).filterIsInstance<AAAARecord>().forEach { add(it.address) }
 }
+
+/**
+ * Some Android/network DNS resolvers omit records whose owner contains underscores, even though
+ * Minecraft SRV providers use such technical target names. Retry an unsuccessful system lookup
+ * against public recursive resolvers instead of passing the unresolvable SRV target to Android.
+ */
+private fun lookupRecords(name: String, type: Int): List<Record> {
+    runLookup(name, type).takeIf { it.isNotEmpty() }?.let { return it }
+    DNS_OVER_HTTPS_ENDPOINTS.forEach { endpoint ->
+        runDohLookup(endpoint, name, type).takeIf { it.isNotEmpty() }?.let { return it }
+    }
+    return emptyList()
+}
+
+private fun runLookup(name: String, type: Int): List<Record> = runCatching {
+    Lookup(name, type).run().orEmpty().toList()
+}.getOrDefault(emptyList())
+
+private fun runDohLookup(endpoint: String, name: String, type: Int): List<Record> = runCatching {
+    val query = Message.newQuery(Record.newRecord(Name.fromString(name, Name.root), type, DClass.IN)).toWire()
+    val connection = URL(endpoint).openConnection() as HttpsURLConnection
+    try {
+        connection.requestMethod = "POST"
+        connection.connectTimeout = DNS_TIMEOUT_MILLIS
+        connection.readTimeout = DNS_TIMEOUT_MILLIS
+        connection.doOutput = true
+        connection.setFixedLengthStreamingMode(query.size)
+        connection.setRequestProperty("Content-Type", "application/dns-message")
+        connection.setRequestProperty("Accept", "application/dns-message")
+        connection.outputStream.use { it.write(query) }
+        if (connection.responseCode !in 200..299) return@runCatching emptyList()
+        Message(connection.inputStream.use { it.readBytes() })
+            .getSection(Section.ANSWER)
+            .filter { it.type == type }
+    } finally {
+        connection.disconnect()
+    }
+}.getOrDefault(emptyList())
+
+private const val DNS_TIMEOUT_MILLIS = 3_000
+private val DNS_OVER_HTTPS_ENDPOINTS = listOf(
+    "https://cloudflare-dns.com/dns-query",
+    "https://dns.google/dns-query",
+)

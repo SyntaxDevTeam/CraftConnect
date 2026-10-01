@@ -10,6 +10,17 @@
     <string name="search_servers">Search servers…</string>
     <string name="search_players">Search players…</string>
     <string name="add_server">Add server</string>
+    <string name="edit_server">Edit server</string>
+    <string name="delete_server">Delete server</string>
+    <string name="delete_server_confirmation">Delete “%1$s” from the saved server list?</string>
+    <string name="delete">Delete</string>
+    <string name="save">Save</string>
+    <string name="server_name">Server name</string>
+    <string name="favorite_server">Favorite server</string>
+    <string name="toggle_favorite">Toggle favorite</string>
+    <string name="server_fields_required">Enter a server name and address.</string>
+    <string name="no_saved_servers">No saved servers. Use + to add one.</string>
+    <string name="no_matching_servers">No servers match the current filters.</string>
     <string name="all">All</string>
     <string name="favorites">Favorites</string>
     <string name="connect">Connect</string>

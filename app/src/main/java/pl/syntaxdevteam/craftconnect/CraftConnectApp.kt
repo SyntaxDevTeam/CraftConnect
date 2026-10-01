@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,6 +20,7 @@ import pl.syntaxdevteam.craftconnect.domain.model.ServerDialogRequest
 import pl.syntaxdevteam.craftconnect.domain.session.ConnectionState
 import pl.syntaxdevteam.craftconnect.domain.session.SessionManager
 import pl.syntaxdevteam.craftconnect.domain.session.SessionManagerFactory
+import pl.syntaxdevteam.craftconnect.domain.server.ServerRepository
 import pl.syntaxdevteam.craftconnect.ui.components.CraftBackground
 import pl.syntaxdevteam.craftconnect.ui.components.CraftBottomBar
 import pl.syntaxdevteam.craftconnect.ui.components.ServerDialogForm
@@ -36,13 +38,17 @@ enum class AppDestination {
 }
 
 @Composable
-fun CraftConnectApp(sessionManagerFactory: SessionManagerFactory) {
+fun CraftConnectApp(
+    sessionManagerFactory: SessionManagerFactory,
+    serverRepository: ServerRepository,
+) {
     var destination by remember { mutableStateOf(AppDestination.Servers) }
     var activeServer by remember { mutableStateOf<ServerProfile?>(null) }
     var sessionManager by remember { mutableStateOf<SessionManager?>(null) }
     var connectionState by remember { mutableStateOf(ConnectionState.DISCONNECTED) }
     var connectionError by remember { mutableStateOf<String?>(null) }
     var serverDialog by remember { mutableStateOf<ServerDialogRequest?>(null) }
+    val savedServers by serverRepository.servers.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(sessionManager) {
@@ -64,13 +70,19 @@ fun CraftConnectApp(sessionManagerFactory: SessionManagerFactory) {
                 )
             },
         ) { contentPadding ->
-            val currentServer = activeServer ?: DemoRepository.servers.first()
+            val currentServer = activeServer ?: savedServers.firstOrNull() ?: DemoRepository.servers.first()
 
             Box(Modifier.padding(contentPadding)) {
                 when (destination) {
                     AppDestination.Servers -> ServersScreen(
+                        servers = savedServers,
                         connectionState = connectionState,
                         connectionError = connectionError,
+                        onCreate = { name, address, favorite ->
+                            serverRepository.create(name, address, favorite)
+                        },
+                        onUpdate = serverRepository::update,
+                        onDelete = serverRepository::delete,
                         onConnect = { server, username ->
                             coroutineScope.launch {
                                 val manager = sessionManagerFactory.create()
