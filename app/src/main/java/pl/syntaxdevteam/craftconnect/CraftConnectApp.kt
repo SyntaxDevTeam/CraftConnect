@@ -52,6 +52,8 @@ fun CraftConnectApp(
     var connectionState by remember { mutableStateOf(ConnectionState.DISCONNECTED) }
     var connectionError by remember { mutableStateOf<String?>(null) }
     var serverDialog by remember { mutableStateOf<ServerDialogRequest?>(null) }
+    val emptyChat = remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<pl.syntaxdevteam.craftconnect.domain.model.ReceivedChatMessage>()) }
+    val chatMessages by (sessionManager?.chatMessages ?: emptyChat).collectAsState()
     val savedServers by serverRepository.servers.collectAsState()
     val savedAccounts by accountRepository.accounts.collectAsState()
     val coroutineScope = rememberCoroutineScope()
@@ -91,6 +93,7 @@ fun CraftConnectApp(
                         onDelete = serverRepository::delete,
                         onConnect = { server, username ->
                             coroutineScope.launch {
+                                sessionManager?.disconnect()
                                 val manager = sessionManagerFactory.create()
                                 sessionManager = manager
                                 connectionState = ConnectionState.CONNECTING
@@ -105,7 +108,7 @@ fun CraftConnectApp(
                             }
                         },
                     )
-                    AppDestination.Chat -> ChatScreen(currentServer) { message ->
+                    AppDestination.Chat -> ChatScreen(currentServer, chatMessages, connectionState == ConnectionState.CONNECTED) { message ->
                         coroutineScope.launch {
                             val manager = sessionManager ?: return@launch
                             if (message.startsWith('/')) manager.sendCommand(message) else manager.sendChat(message)
@@ -138,3 +141,4 @@ fun CraftConnectApp(
         }
     }
 }
+

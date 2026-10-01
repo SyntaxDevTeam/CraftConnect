@@ -69,6 +69,9 @@ class ModernOfflineMinecraftConnectionTest {
                     output.flush()
                     assertEquals(3, readPacket(input, null).readVarInt())
 
+                    output.write(frame(packet {
+                        writeVarInt(0x79); writeByte(8); writeUTF("Welcome before UI"); writeBoolean(false)
+                    }, null))
                     output.write(frame(packet { writeVarInt(0x2C); writeLong(987_654_321L) }, null))
                     output.flush()
                     val keepAlive = readPacket(input, null)
@@ -119,6 +122,7 @@ class ModernOfflineMinecraftConnectionTest {
             assertEquals(775, session.protocolVersion)
             assertEquals("OfflineUser", session.username)
             withTimeout(5_000) { server.await() }
+            assertEquals("Welcome before UI", connection.chatMessages.value.first().content)
             connection.disconnect()
         }
     }

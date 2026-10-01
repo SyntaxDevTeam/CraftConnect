@@ -30,6 +30,7 @@ class DefaultSessionManager(
 
     override val session: StateFlow<SessionSnapshot> = mutableSession.asStateFlow()
     override val events: SharedFlow<SessionEvent> = mutableEvents.asSharedFlow()
+    override val chatMessages = connection.chatMessages
     override val dialogEvents: Flow<ServerDialogEvent> = connection.dialogEvents
 
     override suspend fun connect(server: ServerProfile, username: String) = operationMutex.withLock {
@@ -117,3 +118,4 @@ private fun MinecraftConnectionException.toSessionError(): SessionError = when (
     is MinecraftConnectionException.Authentication -> SessionError.Authentication(diagnosticCode, serverMessage)
     is MinecraftConnectionException.Protocol -> SessionError.Protocol(diagnosticCode, serverMessage)
 }
+

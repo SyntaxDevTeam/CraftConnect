@@ -37,6 +37,8 @@ class ModernOfflineMinecraftConnection(
     private val connectTimeoutMillis: Int = 15_000,
 ) : MinecraftConnection {
     private val addressResolver = MinecraftServerAddressResolver()
+    private val chatHistory = pl.syntaxdevteam.craftconnect.protocol.chat.ChatHistory()
+    override val chatMessages = chatHistory.messages
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val visibilityCommands = JoinVisibilityCommands(scope, ::sendCommand, sendAuthenticationRequest = ::sendAuthenticationSubscription)
     private val writeLock = Any()
@@ -55,6 +57,7 @@ class ModernOfflineMinecraftConnection(
     private var pitch = 0f
 
     override suspend fun connect(server: ServerProfile, username: String): ConnectedSession = withContext(Dispatchers.IO) {
+        chatHistory.clear()
         validateUsername(username)
         val endpoint = addressResolver.resolve(server.address)
         try {
@@ -247,6 +250,18 @@ class ModernOfflineMinecraftConnection(
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
+                    0x79 -> runCatching { packetInput.readSystemChat() }.getOrNull()?.let(chatHistory::append)
+                    0x21 -> runCatching { packetInput.readProfilelessChat() }.getOrNull()?.let(chatHistory::append)
+                    0x41 -> {
+                        val chat = runCatching { packetInput.readPlayerChat() }.getOrNull()
+                        if (chat != null) {
+                            chatHistory.append(chat.text)
+                            if (chat.signed) sendPacket(packet {
+                                writeVarInt(0x06)
+                                writeVarInt(1)
+                            })
+                        }
+                    }
                     CLIENTBOUND_CUSTOM_PAYLOAD -> {
                         val channel = packetInput.readProtocolString()
                         if (channel == AuthenticationBridgeProtocol.CHANNEL) {

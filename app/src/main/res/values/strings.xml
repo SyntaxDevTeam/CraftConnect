@@ -89,4 +89,6 @@
     <string name="dialog_passwords_mismatch">The passwords do not match.</string>
     <string name="server_dialog">Server dialog</string>
     <string name="confirm">Confirm</string>
+    <string name="chat_empty">Waiting for server messages…</string>
 </resources>
+

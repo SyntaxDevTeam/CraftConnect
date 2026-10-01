@@ -24,6 +24,8 @@ import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnectionException
 class LegacyOfflineMinecraftConnection(
     private val connectTimeoutMillis: Int = 15_000,
 ) : MinecraftConnection {
+    private val chatHistory = pl.syntaxdevteam.craftconnect.protocol.chat.ChatHistory()
+    override val chatMessages = chatHistory.messages
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val visibilityCommands = JoinVisibilityCommands(scope, ::sendCommand, sendAuthenticationRequest = ::sendAuthenticationSubscription)
     private val writeLock = Any()
@@ -40,6 +42,7 @@ class LegacyOfflineMinecraftConnection(
     private var pitch = 0f
 
     override suspend fun connect(server: ServerProfile, username: String): ConnectedSession = withContext(Dispatchers.IO) {
+        chatHistory.clear()
         validateUsername(username)
         val endpoint = ServerEndpoint.parse(server.address)
         try {
@@ -141,6 +144,10 @@ class LegacyOfflineMinecraftConnection(
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
+                    0x02 -> runCatching {
+                        val content = readLegacyChat(packetInput.readProtocolString(MAX_JSON_LENGTH))
+                        if (packetInput.readUnsignedByte() != 2) chatHistory.append(content)
+                    }.getOrNull()
                     CLIENTBOUND_CUSTOM_PAYLOAD -> {
                         val channel = packetInput.readProtocolString()
                         if (channel == AuthenticationBridgeProtocol.CHANNEL) {

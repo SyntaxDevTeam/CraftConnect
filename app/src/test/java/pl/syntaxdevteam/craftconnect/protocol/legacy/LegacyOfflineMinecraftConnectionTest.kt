@@ -46,6 +46,9 @@ class LegacyOfflineMinecraftConnectionTest {
                     assertEquals("CraftConnect", brand.readProtocolString())
 
                     output.write(frame(packet {
+                        writeVarInt(0x02); writeProtocolString("\"Welcome before UI\""); writeByte(0)
+                    }, null))
+                    output.write(frame(packet {
                         writeVarInt(0)
                         writeVarInt(123_456)
                     }, null))

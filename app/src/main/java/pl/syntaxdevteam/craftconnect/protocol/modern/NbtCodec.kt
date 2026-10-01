@@ -25,7 +25,11 @@ internal fun DataInputStream.readInlineNbtCompound(): NbtTag.CompoundTag {
     return readPayload(COMPOUND) as NbtTag.CompoundTag
 }
 
-private fun DataInputStream.readPayload(type: Int): NbtTag = when (type) {
+internal fun DataInputStream.readAnonymousNbt(): NbtTag = readPayload(readUnsignedByte())
+
+private fun DataInputStream.readPayload(type: Int, depth: Int = 0): NbtTag {
+    require(depth <= 64) { "NBT nesting too deep" }
+    return when (type) {
     BYTE -> NbtTag.ByteTag(readByte())
     SHORT -> NbtTag.ShortTag(readShort())
     INT -> NbtTag.IntTag(readInt())
@@ -37,20 +41,22 @@ private fun DataInputStream.readPayload(type: Int): NbtTag = when (type) {
     LIST -> {
         val elementType = readUnsignedByte()
         val size = readSafeLength()
-        NbtTag.ListTag(List(size) { readPayload(elementType) })
+        NbtTag.ListTag(List(size) { readPayload(elementType, depth + 1) })
     }
     COMPOUND -> {
         val values = linkedMapOf<String, NbtTag>()
         while (true) {
             val childType = readUnsignedByte()
             if (childType == END) break
-            values[readNbtString()] = readPayload(childType)
+            values[readNbtString()] = readPayload(childType, depth + 1)
         }
         NbtTag.CompoundTag(values)
     }
     INT_ARRAY -> NbtTag.IntArrayTag(IntArray(readSafeLength()) { readInt() })
     LONG_ARRAY -> NbtTag.LongArrayTag(LongArray(readSafeLength()) { readLong() })
     else -> error("Unsupported NBT tag type $type")
+}
+
 }
 
 private fun DataInputStream.readNbtString(): String {

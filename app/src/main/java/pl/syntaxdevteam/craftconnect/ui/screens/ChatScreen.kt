@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -20,35 +22,34 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pl.syntaxdevteam.craftconnect.R
-import pl.syntaxdevteam.craftconnect.data.DemoRepository
-import pl.syntaxdevteam.craftconnect.domain.model.ChatMessage
-import pl.syntaxdevteam.craftconnect.domain.model.PlayerRole
+import pl.syntaxdevteam.craftconnect.domain.model.ReceivedChatMessage
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
 import pl.syntaxdevteam.craftconnect.ui.components.GlowButton
 import pl.syntaxdevteam.craftconnect.ui.components.NeonCard
 import pl.syntaxdevteam.craftconnect.ui.components.SessionHeader
 import pl.syntaxdevteam.craftconnect.ui.theme.Border
 import pl.syntaxdevteam.craftconnect.ui.theme.Crimson
-import pl.syntaxdevteam.craftconnect.ui.theme.Online
 import pl.syntaxdevteam.craftconnect.ui.theme.SurfaceRaised
 import pl.syntaxdevteam.craftconnect.ui.theme.TextPrimary
 import pl.syntaxdevteam.craftconnect.ui.theme.TextSecondary
-import pl.syntaxdevteam.craftconnect.ui.theme.Warning
 
 @Composable
-fun ChatScreen(server: ServerProfile, onSend: (String) -> Unit = {}) {
-    val messages = remember { mutableStateListOf<ChatMessage>().apply { addAll(DemoRepository.messages) } }
+fun ChatScreen(server: ServerProfile, messages: List<ReceivedChatMessage>, connected: Boolean, onSend: (String) -> Unit = {}) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(messages.lastOrNull()?.id) {
+        if (messages.isNotEmpty() && (listState.layoutInfo.totalItemsCount == 0 || (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= messages.size - 3)) {
+            listState.animateScrollToItem(messages.lastIndex)
+        }
+    }
     var input by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize().padding(top = 12.dp)) {
@@ -65,10 +66,12 @@ fun ChatScreen(server: ServerProfile, onSend: (String) -> Unit = {}) {
 
         NeonCard(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                items(messages) { ChatLine(it) }
+                if (messages.isEmpty()) item { Text(stringResource(R.string.chat_empty), color = TextSecondary) }
+                items(messages, key = { it.id }) { ChatLine(it) }
             }
         }
 
@@ -77,6 +80,7 @@ fun ChatScreen(server: ServerProfile, onSend: (String) -> Unit = {}) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OutlinedTextField(
+                enabled = connected,
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
@@ -95,11 +99,11 @@ fun ChatScreen(server: ServerProfile, onSend: (String) -> Unit = {}) {
             )
             Spacer(Modifier.width(8.dp))
             IconButton(
+                enabled = connected && input.isNotBlank(),
                 onClick = {
                     val value = input.trim()
                     if (value.isNotEmpty()) {
                         onSend(value)
-                        messages += ChatMessage("You", value, "now")
                         input = ""
                     }
                 },
@@ -120,33 +124,13 @@ fun ChatScreen(server: ServerProfile, onSend: (String) -> Unit = {}) {
 }
 
 @Composable
-private fun ChatLine(message: ChatMessage) {
+private fun ChatLine(message: ReceivedChatMessage) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Text(
-            text = rolePrefix(message.role) + message.author,
-            color = roleColor(message.role),
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-        )
-        Spacer(Modifier.width(7.dp))
         Text(message.content, color = TextPrimary, modifier = Modifier.weight(1f), fontSize = 13.sp)
-        Text(message.time, color = TextSecondary, fontSize = 10.sp)
+        Text(remember(message.receivedAtEpochMillis) { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(message.receivedAtEpochMillis)) }, color = TextSecondary, fontSize = 10.sp)
     }
 }
 
-private fun rolePrefix(role: PlayerRole): String = when (role) {
-    PlayerRole.ADMIN -> "[ADMIN] "
-    PlayerRole.MVP -> "[MVP++] "
-    PlayerRole.VIP -> "[VIP] "
-    PlayerRole.PLAYER -> ""
-}
-
-private fun roleColor(role: PlayerRole) = when (role) {
-    PlayerRole.ADMIN -> Crimson
-    PlayerRole.MVP -> Warning
-    PlayerRole.VIP -> Online
-    PlayerRole.PLAYER -> TextPrimary
-}

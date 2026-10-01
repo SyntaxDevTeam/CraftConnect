@@ -16,6 +16,9 @@ data class ConnectedSession(
  * Presentation code communicates through SessionManager instead of this type.
  */
 interface MinecraftConnection {
+    val chatMessages: kotlinx.coroutines.flow.StateFlow<List<pl.syntaxdevteam.craftconnect.domain.model.ReceivedChatMessage>>
+        get() = kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+
     val dialogEvents: Flow<ServerDialogEvent>
         get() = emptyFlow()
 
@@ -39,3 +42,4 @@ sealed class MinecraftConnectionException(
         MinecraftConnectionException(code, serverMessage)
     class Protocol(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, code, cause)
 }
+

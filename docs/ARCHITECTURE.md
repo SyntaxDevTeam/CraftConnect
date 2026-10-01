@@ -58,3 +58,23 @@ The visual system follows the initial CraftConnect concept: near-black surfaces,
 The client subscribes on `craftconnect:auth` with a fresh nonce per TCP session.
 Server authentication status, not chat text, gates post-login visibility commands.
 See [authentication bridge](AUTHENTICATION_BRIDGE.md).
+
+
+## Live chat
+
+The protocol adapter owns a StateFlow of the last 500 received messages. This retains
+early login messages and navigation history, clears at reconnect, and never persists
+chat or locally echoes outgoing commands (including /login passwords). SessionManager
+exposes that domain stream to Compose.
+
+Protocol 47 reads JSON chat packet 0x02. Protocol 775 reads anonymous NBT system
+(0x79), profileless (0x21) and player chat (0x41), including unsigned content.
+Signed messages advance the server acknowledgement offset; no cryptographic signature
+verification or secure-chat badge is claimed. Fully/partially filtered messages are
+omitted; action-bar messages are excluded from chat history. Component text/extra and
+common chat translations are flattened to readable text. Unknown translation keys
+retain their arguments; arbitrary registry-specific decoration, colors, hover/click
+actions and a full Minecraft translation catalog remain unsupported.
+
+Packet layout reference: https://github.com/PrismarineJS/minecraft-data/blob/master/data/pc/26.1/protocol.json
+The existing offline-mode/enforced secure-chat compatibility limitations remain.

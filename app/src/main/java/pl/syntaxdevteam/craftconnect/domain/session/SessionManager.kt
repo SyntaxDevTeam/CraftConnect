@@ -7,6 +7,9 @@ import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
 import pl.syntaxdevteam.craftconnect.domain.model.ServerDialogEvent
 
 interface SessionManager {
+    val chatMessages: kotlinx.coroutines.flow.StateFlow<List<pl.syntaxdevteam.craftconnect.domain.model.ReceivedChatMessage>>
+        get() = kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+
     val session: StateFlow<SessionSnapshot>
     val events: SharedFlow<SessionEvent>
     val dialogEvents: Flow<ServerDialogEvent>
@@ -21,3 +24,4 @@ interface SessionManager {
 fun interface SessionManagerFactory {
     fun create(): SessionManager
 }
+
