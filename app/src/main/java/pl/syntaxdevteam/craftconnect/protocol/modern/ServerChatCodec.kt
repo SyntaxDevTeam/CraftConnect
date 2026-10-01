@@ -48,7 +48,13 @@ internal fun DataInputStream.readPlayerChat(): PlayerChat {
 private fun DataInputStream.readChatType() {
     val id = readVarInt()
     require(id >= 0)
-    if (id == 0) readAnonymousNbt() // inline registry holder
+    if (id == 0) repeat(2) { // chat and narration decorations in an inline holder
+        readProtocolString()
+        val parameters = readVarInt()
+        require(parameters in 0..3)
+        repeat(parameters) { require(readVarInt() in 0..2) }
+        readAnonymousNbt() // decoration style
+    }
 }
 
 private fun decorate(name: String, message: String, target: String?): String =

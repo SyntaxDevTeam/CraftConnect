@@ -47,6 +47,17 @@ class ServerChatCodecTest {
         assertEquals("", player(2).readPlayerChat().text)
     }
 
+    @Test fun inlineChatTypeHolder() {
+        assertEquals("Admin: Hello", input(packet {
+            text("Hello"); writeVarInt(0)
+            repeat(2) {
+                writeProtocolString("chat.type.text"); writeVarInt(2); writeVarInt(1); writeVarInt(0)
+                writeByte(10); writeByte(0)
+            }
+            text("Admin"); writeBoolean(false)
+        }).readProfilelessChat())
+    }
+
     @Test fun malformedPacketIsRejected() {
         assertTrue(runCatching { input(byteArrayOf(8, 0, 4, 65)).readSystemChat() }.isFailure)
     }
