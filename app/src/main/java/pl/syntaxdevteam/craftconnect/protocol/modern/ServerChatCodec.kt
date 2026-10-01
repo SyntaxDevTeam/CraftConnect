@@ -12,11 +12,11 @@ internal fun DataInputStream.readSystemChat(formatted: Boolean = false): String?
 }
 
 internal fun DataInputStream.readProfilelessChat(types: ServerChatTypes = ServerChatTypes(), formatted: Boolean = false): String {
-    val message = readAnonymousNbt().let { if (formatted) it.chatFormattedText() else it.chatText() }
+    val message = readAnonymousNbt()
     val decoration = types.readHolder(this)
-    val name = readAnonymousNbt().let { if (formatted) it.chatFormattedText() else it.chatText() }
-    val target = if (readBoolean()) readAnonymousNbt().let { if (formatted) it.chatFormattedText() else it.chatText() } else null
-    return decoration.render(name, message, target)
+    val name = readAnonymousNbt()
+    val target = if (readBoolean()) readAnonymousNbt() else null
+    return decoration.render(name.display(formatted, decoration), message.display(formatted, decoration), target?.display(formatted, decoration))
 }
 
 internal fun DataInputStream.readPlayerChat(types: ServerChatTypes = ServerChatTypes(), formatted: Boolean = false): PlayerChat {
@@ -30,7 +30,7 @@ internal fun DataInputStream.readPlayerChat(types: ServerChatTypes = ServerChatT
     val previous = readVarInt()
     require(previous in 0..20)
     repeat(previous) { if (readVarInt() == 0) readFully(ByteArray(256)) }
-    val unsigned = if (readBoolean()) readAnonymousNbt().let { if (formatted) it.chatFormattedText() else it.chatText() } else null
+    val unsigned = if (readBoolean()) readAnonymousNbt() else null
     val filter = readVarInt()
     require(filter in 0..2)
     if (filter == 2) {
@@ -39,10 +39,10 @@ internal fun DataInputStream.readPlayerChat(types: ServerChatTypes = ServerChatT
         repeat(words) { readLong() }
     }
     val decoration = types.readHolder(this)
-    val name = readAnonymousNbt().let { if (formatted) it.chatFormattedText() else it.chatText() }
-    val target = if (readBoolean()) readAnonymousNbt().let { if (formatted) it.chatFormattedText() else it.chatText() } else null
+    val name = readAnonymousNbt()
+    val target = if (readBoolean()) readAnonymousNbt() else null
     // Never disclose content the server marked as filtered.
-    return PlayerChat(if (filter == 0) decoration.render(name, unsigned ?: plain, target) else "", signed)
+    return PlayerChat(if (filter == 0) decoration.render(name.display(formatted, decoration), (unsigned ?: NbtTag.StringTag(plain)).display(formatted, decoration), target?.display(formatted, decoration)) else "", signed)
 }
 
 internal fun NbtTag.chatText(depth: Int = 0): String {
@@ -63,3 +63,6 @@ internal fun NbtTag.chatText(depth: Int = 0): String {
 }
 
 
+
+private fun NbtTag.display(formatted: Boolean, decoration: ChatDecoration): String =
+    if (formatted) chatFormattedText(inherited = decoration.style) else chatText()

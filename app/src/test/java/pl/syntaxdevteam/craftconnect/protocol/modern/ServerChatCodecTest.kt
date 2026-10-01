@@ -51,7 +51,7 @@ class ServerChatCodecTest {
         assertEquals("Admin: Hello", input(packet {
             text("Hello"); writeVarInt(0)
             repeat(2) {
-                writeProtocolString("chat.type.text"); writeVarInt(2); writeVarInt(1); writeVarInt(0)
+                writeProtocolString("chat.type.text"); writeVarInt(2); writeVarInt(0); writeVarInt(2)
                 writeByte(10); writeByte(0)
             }
             text("Admin"); writeBoolean(false)
@@ -72,4 +72,5 @@ class ServerChatCodecTest {
         assertTrue(runCatching { input(byteArrayOf(8, 0, 4, 65)).readSystemChat() }.isFailure)
     }
 }
+
 
