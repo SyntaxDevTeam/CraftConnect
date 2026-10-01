@@ -1,0 +1,12 @@
+name: CraftConnectBridge
+version: '0.1.0'
+main: pl.syntaxdevteam.craftconnect.bridge.CraftConnectBridge
+api-version: '1.21'
+folia-supported: true
+softdepend: [AuthMe, nLogin, AuthGatewayX]
+description: Reports successful server authentication to CraftConnect clients.
+authors: [SyntaxDevTeam]
+permissions:
+  craftconnect.bridge.use:
+    description: Allows authentication status notifications to CraftConnect.
+    default: true

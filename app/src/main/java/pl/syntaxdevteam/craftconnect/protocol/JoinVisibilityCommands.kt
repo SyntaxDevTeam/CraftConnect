@@ -1,5 +1,7 @@
 package pl.syntaxdevteam.craftconnect.protocol
 
+import java.util.UUID
+import pl.syntaxdevteam.craftconnect.bridge.protocol.AuthenticationBridgeProtocol
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -11,26 +13,49 @@ internal class JoinVisibilityCommands(
     private val scope: CoroutineScope,
     private val sendCommand: suspend (String) -> Unit,
     private val confirmationTimeoutMillis: Long = 3_000,
+    private val sendAuthenticationRequest: (suspend (ByteArray) -> Unit)? = null,
 ) {
     private var started = false
     private var worldReady = false
     private var authenticated = false
     private var spectator = false
     private var attempt: Job? = null
+    private var request: Job? = null
+    private var nonce = UUID.randomUUID().toString()
 
     @Synchronized
     fun onWorldReady() {
+        if (worldReady) return
         worldReady = true
+        if (sendAuthenticationRequest != null) request = scope.launch {
+            try {
+                while (!isAuthenticated()) {
+                    sendAuthenticationRequest(subscriptionPayload())
+                    delay(2_000)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Connection shutdown stops the subscription.
+            }
+        }
         startIfReady()
     }
 
-    /** Only server system messages may reach this method, never player chat. */
+    /** Only a proof received on the dedicated plugin channel confirms login. */
     @Synchronized
-    fun onServerMessage(message: String) {
-        if (!ServerLoginConfirmation.isSuccessful(message)) return
+    fun onBridgeMessage(payload: ByteArray) {
+        if (!AuthenticationBridgeProtocol.confirms(payload, nonce)) return
         authenticated = true
+        request?.cancel()
         startIfReady()
     }
+
+    @Synchronized
+    fun subscriptionPayload(): ByteArray = AuthenticationBridgeProtocol.subscribe(nonce)
+
+    @Synchronized
+    private fun isAuthenticated() = authenticated
 
     private fun startIfReady() {
         if (started || !worldReady || !authenticated) return
@@ -61,6 +86,9 @@ internal class JoinVisibilityCommands(
     @Synchronized
     fun reset() {
         attempt?.cancel()
+        request?.cancel()
+        request = null
+        nonce = UUID.randomUUID().toString()
         attempt = null
         started = false
         worldReady = false

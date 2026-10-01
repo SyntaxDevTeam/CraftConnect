@@ -25,8 +25,6 @@ internal fun DataInputStream.readInlineNbtCompound(): NbtTag.CompoundTag {
     return readPayload(COMPOUND) as NbtTag.CompoundTag
 }
 
-internal fun DataInputStream.readInlineNbt(): NbtTag = readPayload(readUnsignedByte())
-
 private fun DataInputStream.readPayload(type: Int): NbtTag = when (type) {
     BYTE -> NbtTag.ByteTag(readByte())
     SHORT -> NbtTag.ShortTag(readShort())

@@ -49,3 +49,12 @@ Current screens:
 - connection/application settings.
 
 The visual system follows the initial CraftConnect concept: near-black surfaces, deep crimson panels, sharp red accents and restrained neon glow.
+
+
+## Authentication integrations
+
+`bridge-protocol` is a small Java library shared by Android and the server plugin.
+`server-bridge` adapts AuthMe/nLogin public APIs and AuthGatewayX ServicesManager.
+The client subscribes on `craftconnect:auth` with a fresh nonce per TCP session.
+Server authentication status, not chat text, gates post-login visibility commands.
+See [authentication bridge](AUTHENTICATION_BRIDGE.md).

@@ -14,6 +14,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
+import pl.syntaxdevteam.craftconnect.bridge.protocol.AuthenticationBridgeProtocol
 import pl.syntaxdevteam.craftconnect.protocol.JoinVisibilityCommands
 import pl.syntaxdevteam.craftconnect.protocol.ConnectedSession
 import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnection
@@ -24,7 +25,7 @@ class LegacyOfflineMinecraftConnection(
     private val connectTimeoutMillis: Int = 15_000,
 ) : MinecraftConnection {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val visibilityCommands = JoinVisibilityCommands(scope, ::sendCommand)
+    private val visibilityCommands = JoinVisibilityCommands(scope, ::sendCommand, sendAuthenticationRequest = ::sendAuthenticationSubscription)
     private val writeLock = Any()
     private val open = AtomicBoolean(false)
     private var socket: Socket? = null
@@ -86,6 +87,19 @@ class LegacyOfflineMinecraftConnection(
         })
     }
 
+    private suspend fun sendAuthenticationSubscription(payload: ByteArray) = withContext(Dispatchers.IO) {
+        sendPacket(packet {
+            writeVarInt(SERVERBOUND_CUSTOM_PAYLOAD_PACKET)
+            writeProtocolString("REGISTER")
+            write(AuthenticationBridgeProtocol.CHANNEL.toByteArray(Charsets.UTF_8))
+        })
+        sendPacket(packet {
+            writeVarInt(SERVERBOUND_CUSTOM_PAYLOAD_PACKET)
+            writeProtocolString(AuthenticationBridgeProtocol.CHANNEL)
+            write(payload)
+        })
+    }
+
     override suspend fun sendCommand(command: String) {
         sendChat(if (command.startsWith('/')) command else "/$command")
     }
@@ -127,13 +141,14 @@ class LegacyOfflineMinecraftConnection(
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
-                    CLIENTBOUND_CHAT_PACKET -> {
-                        val json = packetInput.readProtocolString(MAX_JSON_LENGTH)
-                        val position = packetInput.readUnsignedByte()
-                        if (position == 1) {
-                            val text = Regex("\"text\"\\s*:\\s*\"([^\"]*)\"")
-                                .findAll(json).joinToString("") { it.groupValues[1] }
-                            visibilityCommands.onServerMessage(text)
+                    CLIENTBOUND_CUSTOM_PAYLOAD -> {
+                        val channel = packetInput.readProtocolString()
+                        if (channel == AuthenticationBridgeProtocol.CHANNEL) {
+                            val size = packetInput.available()
+                            if (size <= 256) {
+                                val payload = ByteArray(size).also(packetInput::readFully)
+                                visibilityCommands.onBridgeMessage(payload)
+                            }
                         }
                     }
                     CLIENTBOUND_JOIN_GAME_PACKET -> {
@@ -271,7 +286,7 @@ class LegacyOfflineMinecraftConnection(
         const val LOGIN_SUCCESS_PACKET = 0x02
         const val SET_COMPRESSION_PACKET = 0x03
         const val CLIENTBOUND_JOIN_GAME_PACKET = 0x01
-        const val CLIENTBOUND_CHAT_PACKET = 0x02
+        const val CLIENTBOUND_CUSTOM_PAYLOAD = 0x3F
         const val CLIENTBOUND_GAME_STATE_PACKET = 0x2B
         const val CLIENTBOUND_KEEP_ALIVE_PACKET = 0x00
         const val CLIENTBOUND_POSITION_PACKET = 0x08

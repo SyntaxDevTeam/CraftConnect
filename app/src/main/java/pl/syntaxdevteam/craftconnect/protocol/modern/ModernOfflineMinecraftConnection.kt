@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
 import pl.syntaxdevteam.craftconnect.domain.model.ServerDialogEvent
+import pl.syntaxdevteam.craftconnect.bridge.protocol.AuthenticationBridgeProtocol
 import pl.syntaxdevteam.craftconnect.protocol.JoinVisibilityCommands
 import pl.syntaxdevteam.craftconnect.protocol.ConnectedSession
 import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnection
@@ -37,7 +38,7 @@ class ModernOfflineMinecraftConnection(
 ) : MinecraftConnection {
     private val addressResolver = MinecraftServerAddressResolver()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val visibilityCommands = JoinVisibilityCommands(scope, ::sendCommand)
+    private val visibilityCommands = JoinVisibilityCommands(scope, ::sendCommand, sendAuthenticationRequest = ::sendAuthenticationSubscription)
     private val writeLock = Any()
     private val open = AtomicBoolean(false)
     private val mutableDialogEvents = MutableSharedFlow<ServerDialogEvent>(replay = 1)
@@ -117,6 +118,19 @@ class ModernOfflineMinecraftConnection(
             writeVarInt(0)
             write(byteArrayOf(0, 0, 0))
             writeByte(0)
+        })
+    }
+
+    private suspend fun sendAuthenticationSubscription(payload: ByteArray) = withContext(Dispatchers.IO) {
+        sendPacket(packet {
+            writeVarInt(SERVERBOUND_CUSTOM_PAYLOAD)
+            writeProtocolString("minecraft:register")
+            write(AuthenticationBridgeProtocol.CHANNEL.toByteArray(Charsets.UTF_8))
+        })
+        sendPacket(packet {
+            writeVarInt(SERVERBOUND_CUSTOM_PAYLOAD)
+            writeProtocolString(AuthenticationBridgeProtocol.CHANNEL)
+            write(payload)
         })
     }
 
@@ -233,9 +247,15 @@ class ModernOfflineMinecraftConnection(
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
-                    CLIENTBOUND_SYSTEM_CHAT -> {
-                        val message = packetInput.readInlineNbt().plainText()
-                        if (!packetInput.readBoolean()) visibilityCommands.onServerMessage(message)
+                    CLIENTBOUND_CUSTOM_PAYLOAD -> {
+                        val channel = packetInput.readProtocolString()
+                        if (channel == AuthenticationBridgeProtocol.CHANNEL) {
+                            val size = packetInput.available()
+                            if (size <= 256) {
+                                val payload = ByteArray(size).also(packetInput::readFully)
+                                visibilityCommands.onBridgeMessage(payload)
+                            }
+                        }
                     }
                     CLIENTBOUND_JOIN_GAME -> readInitialGameMode(packetInput)
                     CLIENTBOUND_GAME_STATE -> {
@@ -369,7 +389,8 @@ class ModernOfflineMinecraftConnection(
         const val SERVERBOUND_KNOWN_PACKS = 0x07
         const val SERVERBOUND_ACCEPT_CODE_OF_CONDUCT = 0x09
         const val CLIENTBOUND_JOIN_GAME = 0x31
-        const val CLIENTBOUND_SYSTEM_CHAT = 0x79
+        const val CLIENTBOUND_CUSTOM_PAYLOAD = 0x18
+        const val SERVERBOUND_CUSTOM_PAYLOAD = 0x16
         const val CLIENTBOUND_GAME_STATE = 0x26
         const val CLIENTBOUND_KEEP_ALIVE = 0x2C
         const val CLIENTBOUND_DISCONNECT = 0x20

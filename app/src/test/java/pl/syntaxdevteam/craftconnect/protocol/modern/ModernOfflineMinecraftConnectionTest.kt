@@ -1,5 +1,6 @@
 package pl.syntaxdevteam.craftconnect.protocol.modern
 
+import pl.syntaxdevteam.craftconnect.bridge.protocol.AuthenticationBridgeProtocol
 import java.net.ServerSocket
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,7 @@ class ModernOfflineMinecraftConnectionTest {
         ServerSocket(0).use { serverSocket ->
             val server = async(Dispatchers.IO) {
                 serverSocket.accept().use { client ->
+                    client.soTimeout = 2_000
                     val input = client.getInputStream()
                     val output = client.getOutputStream()
                     readPacket(input, null).also {
@@ -72,6 +74,39 @@ class ModernOfflineMinecraftConnectionTest {
                     val keepAlive = readPacket(input, null)
                     assertEquals(0x1C, keepAlive.readVarInt())
                     assertEquals(987_654_321L, keepAlive.readLong())
+                    // No visibility command is sent at protocol login. Only after
+                    // world readiness and an API-backed bridge confirmation.
+                    output.write(frame(packet {
+                        writeVarInt(0x48)
+                        writeVarInt(42)
+                        writeDouble(1.0); writeDouble(64.0); writeDouble(2.0)
+                        repeat(3) { writeDouble(0.0) }
+                        writeFloat(0f); writeFloat(0f)
+                        writeInt(0)
+                    }, null))
+                    output.flush()
+                    assertEquals(0, readPacket(input, null).readVarInt())
+                    assertEquals(0x1F, readPacket(input, null).readVarInt())
+                    val registration = readPacket(input, null)
+                    assertEquals(0x16, registration.readVarInt())
+                    assertEquals("minecraft:register", registration.readProtocolString())
+                    val subscription = readPacket(input, null)
+                    assertEquals(0x16, subscription.readVarInt())
+                    assertEquals(AuthenticationBridgeProtocol.CHANNEL, subscription.readProtocolString())
+                    val nonce = AuthenticationBridgeProtocol.subscriptionNonce(
+                        ByteArray(subscription.available()).also(subscription::readFully))
+                    output.write(frame(packet {
+                        writeVarInt(0x18)
+                        writeProtocolString(AuthenticationBridgeProtocol.CHANNEL)
+                        write(AuthenticationBridgeProtocol.authenticated(nonce, setOf("nLogin")))
+                    }, null))
+                    output.flush()
+                    val command = readPacket(input, null)
+                    assertEquals(0x07, command.readVarInt())
+                    assertEquals("gamemode spectator", command.readProtocolString())
+                    output.write(frame(packet { writeVarInt(0x26); writeByte(3); writeFloat(3f) }, null))
+                    output.flush()
+
                 }
             }
             val connection = ModernOfflineMinecraftConnection(2_000)
@@ -83,8 +118,9 @@ class ModernOfflineMinecraftConnectionTest {
 
             assertEquals(775, session.protocolVersion)
             assertEquals("OfflineUser", session.username)
-            withTimeout(2_000) { server.await() }
+            withTimeout(5_000) { server.await() }
             connection.disconnect()
         }
     }
 }
+

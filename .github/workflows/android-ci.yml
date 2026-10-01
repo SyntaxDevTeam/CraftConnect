@@ -74,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon :app:assembleDebug :app:lintDebug :app:testDebugUnitTest --console=plain
+          ./gradlew --no-daemon :app:assembleDebug :app:lintDebug :app:testDebugUnitTest :server-bridge:jar :server-bridge:test :bridge-protocol:test --console=plain
 
       - name: Upload debug APK
         if: success()
@@ -82,5 +82,14 @@ jobs:
         with:
           name: CraftConnect-debug
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload server bridge
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftConnectBridge
+          path: server-bridge/build/libs/CraftConnectBridge-*.jar
           if-no-files-found: error
           retention-days: 7

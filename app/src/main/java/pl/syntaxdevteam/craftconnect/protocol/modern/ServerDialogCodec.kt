@@ -57,7 +57,7 @@ private fun NbtTag.CompoundTag.string(key: String): String =
 private fun NbtTag.CompoundTag.stringOrNull(key: String): String? =
     (this[key] as? NbtTag.StringTag)?.value
 
-internal fun NbtTag?.plainText(): String = when (this) {
+private fun NbtTag?.plainText(): String = when (this) {
     is NbtTag.StringTag -> value
     is NbtTag.CompoundTag -> {
         val direct = (value["text"] as? NbtTag.StringTag)?.value.orEmpty()

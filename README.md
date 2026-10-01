@@ -1,27 +1,16 @@
 # CraftConnect
 
-## Automatyczna próba ukrycia postaci
+## Logowanie i automatyczna próba ukrycia
 
-Aplikacja czeka na systemowy komunikat serwera potwierdzający udane logowanie
-przez plugin `/login` (także logowanie dialogiem AuthGatewayX). Samo wejście do świata,
-wysłanie hasła albo zamknięcie dialogu nie uruchamia komend.
+Obsługa AuthMe Reloaded, nLogin i AuthGatewayX korzysta z pluginu serwerowego
+**CraftConnectBridge**. Stan logowania pochodzi z publicznego API pluginu; treść,
+język i format komunikatów nie mają znaczenia. Wymagane jest zainstalowanie bridge'a
+na serwerze. [Instalacja, API i ograniczenia](docs/AUTHENTICATION_BRIDGE.md).
 
-Po potwierdzeniu logowania i otrzymaniu pozycji w świecie wysyła `/gamemode spectator`.
-Jeżeli serwer nie potwierdzi trybu spectator w ciągu 3 sekund, jednokrotnie wysyła
-`/vanish` jako fallback. Gracz dołączający już jako spectator nie otrzymuje tych komend.
-Teleporty i respawn nie ponawiają `/vanish`; rozłączenie anuluje oczekującą próbę.
-
-Rozpoznawane są domyślne polskie komunikaty sukcesu AuthGatewayX oraz podstawowe
-polskie i angielskie komunikaty logowania, w tym AuthMe `Successfully logged in!`.
-Komunikaty muszą pochodzić z czatu systemowego serwera, nie ze zwykłego czatu graczy.
-Serwer z własnym tekstem sukcesu wymaga dopisania go w `ServerLoginConfirmation`.
-Brak rozpoznanego potwierdzenia oznacza brak automatycznych komend, także na serwerach
-bez pluginu logowania. Nie ma awaryjnego timera wysyłającego komendy przed logowaniem.
-
-Obie komendy wymagają wsparcia serwera i odpowiednich uprawnień. Wysłanie komendy
-nie gwarantuje niewidzialności, odporności na obrażenia ani ochrony ekwipunku.
-Aplikacja nie przywraca automatycznie wcześniejszego trybu gry i nie wysyła ponownie
-`/vanish` przy rozłączeniu.
+Dopiero po potwierdzeniu uwierzytelnienia i pozycji w świecie aplikacja wysyła
+`/gamemode spectator`. Po 3 sekundach bez potwierdzenia spectator wysyła jednorazowo
+`/vanish`. Brak bridge'a, brak obsługiwanego API lub błędne hasło nie uruchamiają
+komend. Obie komendy nadal wymagają uprawnień gracza; nie gwarantują ochrony ekwipunku.
 
 **Headless Minecraft protocol client for Android.**
 

@@ -1,5 +1,6 @@
 package pl.syntaxdevteam.craftconnect.protocol.legacy
 
+import pl.syntaxdevteam.craftconnect.bridge.protocol.AuthenticationBridgeProtocol
 import java.net.ServerSocket
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -16,6 +17,7 @@ class LegacyOfflineMinecraftConnectionTest {
         ServerSocket(0).use { serverSocket ->
             val server = async(Dispatchers.IO) {
                 serverSocket.accept().use { client ->
+                    client.soTimeout = 2_000
                     val input = client.getInputStream()
                     val output = client.getOutputStream()
                     val handshake = readPacket(input, null)
@@ -51,6 +53,36 @@ class LegacyOfflineMinecraftConnectionTest {
                     val keepAlive = readPacket(input, null)
                     assertEquals(0, keepAlive.readVarInt())
                     assertEquals(123_456, keepAlive.readVarInt())
+                    // No visibility command is sent at protocol login. Only after
+                    // world readiness and an API-backed bridge confirmation.
+                    output.write(frame(packet {
+                        writeVarInt(0x08)
+                        writeDouble(1.0); writeDouble(64.0); writeDouble(2.0)
+                        writeFloat(0f); writeFloat(0f)
+                        writeByte(0)
+                    }, null))
+                    output.flush()
+                    assertEquals(0x06, readPacket(input, null).readVarInt())
+                    val registration = readPacket(input, null)
+                    assertEquals(0x17, registration.readVarInt())
+                    assertEquals("REGISTER", registration.readProtocolString())
+                    val subscription = readPacket(input, null)
+                    assertEquals(0x17, subscription.readVarInt())
+                    assertEquals(AuthenticationBridgeProtocol.CHANNEL, subscription.readProtocolString())
+                    val nonce = AuthenticationBridgeProtocol.subscriptionNonce(
+                        ByteArray(subscription.available()).also(subscription::readFully))
+                    output.write(frame(packet {
+                        writeVarInt(0x3F)
+                        writeProtocolString(AuthenticationBridgeProtocol.CHANNEL)
+                        write(AuthenticationBridgeProtocol.authenticated(nonce, setOf("AuthMe")))
+                    }, null))
+                    output.flush()
+                    val command = readPacket(input, null)
+                    assertEquals(0x01, command.readVarInt())
+                    assertEquals("/gamemode spectator", command.readProtocolString())
+                    output.write(frame(packet { writeVarInt(0x2B); writeByte(3); writeFloat(3f) }, null))
+                    output.flush()
+
                 }
             }
             val connection = LegacyOfflineMinecraftConnection(connectTimeoutMillis = 2_000)
@@ -69,8 +101,9 @@ class LegacyOfflineMinecraftConnectionTest {
             assertEquals(47, session.protocolVersion)
             assertEquals("OfflineUser", session.username)
             assertEquals("01234567-89ab-cdef-0123-456789abcdef", session.uuid)
-            withTimeout(2_000) { server.await() }
+            withTimeout(5_000) { server.await() }
             withContext(Dispatchers.IO) { connection.disconnect() }
         }
     }
 }
+
