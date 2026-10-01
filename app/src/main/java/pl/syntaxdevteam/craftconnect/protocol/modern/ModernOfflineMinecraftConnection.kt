@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
 import pl.syntaxdevteam.craftconnect.domain.model.ServerDialogEvent
+import pl.syntaxdevteam.craftconnect.protocol.JoinVisibilityCommands
 import pl.syntaxdevteam.craftconnect.protocol.ConnectedSession
 import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnection
 import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnectionException
@@ -36,6 +37,7 @@ class ModernOfflineMinecraftConnection(
 ) : MinecraftConnection {
     private val addressResolver = MinecraftServerAddressResolver()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val visibilityCommands = JoinVisibilityCommands(scope, ::sendCommand)
     private val writeLock = Any()
     private val open = AtomicBoolean(false)
     private val mutableDialogEvents = MutableSharedFlow<ServerDialogEvent>(replay = 1)
@@ -231,6 +233,12 @@ class ModernOfflineMinecraftConnection(
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
+                    CLIENTBOUND_JOIN_GAME -> readInitialGameMode(packetInput)
+                    CLIENTBOUND_GAME_STATE -> {
+                        val reason = packetInput.readUnsignedByte()
+                        val value = packetInput.readFloat()
+                        if (reason == 3) visibilityCommands.onGameMode(value.toInt())
+                    }
                     CLIENTBOUND_KEEP_ALIVE -> respondLong(SERVERBOUND_KEEP_ALIVE, packetInput.readLong())
                     CLIENTBOUND_POSITION -> acknowledgePosition(packetInput)
                     CLIENTBOUND_DISCONNECT -> closeResources()
@@ -243,6 +251,20 @@ class ModernOfflineMinecraftConnection(
         } catch (_: Exception) {
             closeResources()
         }
+    }
+
+    private fun readInitialGameMode(input: DataInputStream) {
+        input.readInt()
+        input.readBoolean()
+        val worlds = input.readVarInt()
+        require(worlds in 0..1_024) { "Invalid world count" }
+        repeat(worlds) { input.readProtocolString() }
+        repeat(3) { input.readVarInt() }
+        repeat(3) { input.readBoolean() }
+        input.readVarInt()
+        input.readProtocolString()
+        input.readLong()
+        visibilityCommands.onGameMode(input.readUnsignedByte())
     }
 
     private fun acknowledgePosition(input: DataInputStream) {
@@ -268,6 +290,7 @@ class ModernOfflineMinecraftConnection(
             writeFloat(yaw); writeFloat(pitch)
             writeByte(1)
         })
+        visibilityCommands.onWorldReady()
     }
 
     private fun sendClientSettings(packetId: Int) = sendPacket(packet {
@@ -295,6 +318,7 @@ class ModernOfflineMinecraftConnection(
 
     private fun closeResources() {
         if (!open.getAndSet(false)) return
+        visibilityCommands.reset()
         readerJob?.cancel()
         runCatching { socket?.close() }
         socket = null
@@ -340,6 +364,8 @@ class ModernOfflineMinecraftConnection(
         const val SERVERBOUND_CONFIGURATION_PONG = 0x05
         const val SERVERBOUND_KNOWN_PACKS = 0x07
         const val SERVERBOUND_ACCEPT_CODE_OF_CONDUCT = 0x09
+        const val CLIENTBOUND_JOIN_GAME = 0x31
+        const val CLIENTBOUND_GAME_STATE = 0x26
         const val CLIENTBOUND_KEEP_ALIVE = 0x2C
         const val CLIENTBOUND_DISCONNECT = 0x20
         const val CLIENTBOUND_POSITION = 0x48
@@ -370,3 +396,4 @@ private fun java.io.DataOutputStream.writeUuid(uuid: UUID) { writeLong(uuid.most
 private fun String.minecraftText(): String =
     (Regex("\"text\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"").find(this)?.groupValues?.get(1) ?: take(512))
         .replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\").take(512)
+

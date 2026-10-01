@@ -14,6 +14,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
+import pl.syntaxdevteam.craftconnect.protocol.JoinVisibilityCommands
 import pl.syntaxdevteam.craftconnect.protocol.ConnectedSession
 import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnection
 import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnectionException
@@ -23,6 +24,7 @@ class LegacyOfflineMinecraftConnection(
     private val connectTimeoutMillis: Int = 15_000,
 ) : MinecraftConnection {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val visibilityCommands = JoinVisibilityCommands(scope, ::sendCommand)
     private val writeLock = Any()
     private val open = AtomicBoolean(false)
     private var socket: Socket? = null
@@ -125,6 +127,15 @@ class LegacyOfflineMinecraftConnection(
             while (open.get()) {
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
+                    CLIENTBOUND_JOIN_GAME_PACKET -> {
+                        packetInput.readInt()
+                        visibilityCommands.onGameMode(packetInput.readUnsignedByte() and 0x07)
+                    }
+                    CLIENTBOUND_GAME_STATE_PACKET -> {
+                        val reason = packetInput.readUnsignedByte()
+                        val value = packetInput.readFloat()
+                        if (reason == 3) visibilityCommands.onGameMode(value.toInt())
+                    }
                     CLIENTBOUND_KEEP_ALIVE_PACKET -> respondToKeepAlive(packetInput.readVarInt())
                     CLIENTBOUND_POSITION_PACKET -> respondToPosition(packetInput)
                     CLIENTBOUND_DISCONNECT_PACKET -> {
@@ -182,6 +193,7 @@ class LegacyOfflineMinecraftConnection(
             writeFloat(pitch)
             writeBoolean(true)
         })
+        visibilityCommands.onWorldReady()
     }
 
     private fun sendPacket(payload: ByteArray) {
@@ -196,6 +208,7 @@ class LegacyOfflineMinecraftConnection(
 
     private fun closeResources() {
         if (!open.getAndSet(false)) return
+        visibilityCommands.reset()
         readerJob?.cancel()
         runCatching { socket?.close() }
         socket = null
@@ -248,6 +261,8 @@ class LegacyOfflineMinecraftConnection(
         const val LOGIN_DISCONNECT_PACKET = 0x00
         const val LOGIN_SUCCESS_PACKET = 0x02
         const val SET_COMPRESSION_PACKET = 0x03
+        const val CLIENTBOUND_JOIN_GAME_PACKET = 0x01
+        const val CLIENTBOUND_GAME_STATE_PACKET = 0x2B
         const val CLIENTBOUND_KEEP_ALIVE_PACKET = 0x00
         const val CLIENTBOUND_POSITION_PACKET = 0x08
         const val CLIENTBOUND_DISCONNECT_PACKET = 0x40
@@ -274,3 +289,4 @@ private fun String.minecraftText(): String {
         .replace("\\\\", "\\")
         .take(512)
 }
+

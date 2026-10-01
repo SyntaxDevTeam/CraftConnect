@@ -1,5 +1,20 @@
 # CraftConnect
 
+## Automatyczna próba ukrycia postaci
+
+Po pierwszym potwierdzeniu pozycji w świecie aplikacja wysyła `/gamemode spectator`.
+Jeżeli serwer nie potwierdzi trybu spectator pakietem zmiany trybu w ciągu 3 sekund,
+aplikacja jednokrotnie wysyła `/vanish` jako fallback. Jeżeli gracz już dołącza jako
+spectator, komendy są pomijane. Teleporty i respawn nie ponawiają `/vanish`, ponieważ
+na wielu serwerach ta komenda przełącza niewidzialność. Rozłączenie anuluje próbę.
+
+Obie komendy wymagają wsparcia serwera i odpowiednich uprawnień. Wysłanie komendy
+nie gwarantuje niewidzialności, odporności na obrażenia ani ochrony ekwipunku.
+Na serwerach wymagających dodatkowego `/login` po wejściu do świata pierwsza próba
+może zostać odrzucona przez plugin logowania; po uwierzytelnieniu komendę należy
+wtedy wysłać ręcznie. Aplikacja nie przywraca automatycznie wcześniejszego trybu gry
+i nie wysyła ponownie `/vanish` przy rozłączeniu.
+
 **Headless Minecraft protocol client for Android.**
 
 CraftConnect connects to Minecraft servers without rendering the game world. The application is intended for chat, commands, player/session information, notifications and connection-oriented tooling rather than gameplay.

@@ -69,12 +69,12 @@ jobs:
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v6
 
-      - name: Build and lint
+      - name: Build, lint and unit tests
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon :app:assembleDebug :app:lintDebug --console=plain
+          ./gradlew --no-daemon :app:assembleDebug :app:lintDebug :app:testDebugUnitTest --console=plain
 
       - name: Upload debug APK
         if: success()
