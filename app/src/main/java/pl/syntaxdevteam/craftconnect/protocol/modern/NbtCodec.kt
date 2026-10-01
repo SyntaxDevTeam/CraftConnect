@@ -41,7 +41,13 @@ private fun DataInputStream.readPayload(type: Int, depth: Int = 0): NbtTag {
     LIST -> {
         val elementType = readUnsignedByte()
         val size = readSafeLength()
-        NbtTag.ListTag(List(size) { readPayload(elementType, depth + 1) })
+        NbtTag.ListTag(List(size) {
+            val entry = readPayload(elementType, depth + 1)
+            // Minecraft ListTag wraps heterogeneous elements in a singleton compound
+            // with an empty key. Unwrap exactly one layer, only inside a list.
+            if (entry is NbtTag.CompoundTag && entry.value.size == 1 && entry.value.containsKey(""))
+                entry.value.getValue("") else entry
+        })
     }
     COMPOUND -> {
         val values = linkedMapOf<String, NbtTag>()

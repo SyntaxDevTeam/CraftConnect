@@ -98,7 +98,12 @@
     <string name="players_no_matches">No players match your search.</string>
     <string name="player_ping">%1$d ms</string>
     <string name="player_ping_unknown">—</string>
+    <string name="session_notification_channel">Server connection</string>
+    <string name="session_notification_connecting">Connecting to the Minecraft server…</string>
+    <string name="session_notification_connected">Active connection: %1$s</string>
+    <string name="session_disconnect">Disconnect</string>
 </resources>
+
 
 
 

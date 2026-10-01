@@ -11,7 +11,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.CoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import pl.syntaxdevteam.craftconnect.data.DemoRepository
@@ -19,7 +20,6 @@ import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
 import pl.syntaxdevteam.craftconnect.domain.model.ServerDialogEvent
 import pl.syntaxdevteam.craftconnect.domain.model.ServerDialogRequest
 import pl.syntaxdevteam.craftconnect.domain.session.ConnectionState
-import pl.syntaxdevteam.craftconnect.domain.session.SessionManager
 import pl.syntaxdevteam.craftconnect.domain.session.SessionManagerFactory
 import pl.syntaxdevteam.craftconnect.domain.server.ServerRepository
 import pl.syntaxdevteam.craftconnect.domain.account.AccountRepository
@@ -46,24 +46,31 @@ fun CraftConnectApp(
     sessionManagerFactory: SessionManagerFactory,
     serverRepository: ServerRepository,
     accountRepository: AccountRepository,
+    sessionScope: CoroutineScope,
+    onBeforeConnect: () -> Unit,
 ) {
-    var destination by remember { mutableStateOf(AppDestination.Servers) }
-    var activeServer by remember { mutableStateOf<ServerProfile?>(null) }
-    var sessionManager by remember { mutableStateOf<SessionManager?>(null) }
-    var connectionState by remember { mutableStateOf(ConnectionState.DISCONNECTED) }
+    val sessionManager = remember { sessionManagerFactory.create() }
+    var destination by rememberSaveable {
+        mutableStateOf(if (sessionManager.session.value.connectionState == ConnectionState.CONNECTED) AppDestination.Chat else AppDestination.Servers)
+    }
+    var activeServer by remember { mutableStateOf(sessionManager.session.value.server) }
+    var connectionState by remember { mutableStateOf(sessionManager.session.value.connectionState) }
     var connectionError by remember { mutableStateOf<String?>(null) }
     var serverDialog by remember { mutableStateOf<ServerDialogRequest?>(null) }
-    val emptyChat = remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<pl.syntaxdevteam.craftconnect.domain.model.ReceivedChatMessage>()) }
-    val emptyPlayers = remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<pl.syntaxdevteam.craftconnect.domain.model.ServerPlayer>()) }
-    val players by (sessionManager?.players ?: emptyPlayers).collectAsState()
-    val chatMessages by (sessionManager?.chatMessages ?: emptyChat).collectAsState()
+    val players by sessionManager.players.collectAsState()
+    val chatMessages by sessionManager.chatMessages.collectAsState()
     val savedServers by serverRepository.servers.collectAsState()
     val savedAccounts by accountRepository.accounts.collectAsState()
-    val coroutineScope = rememberCoroutineScope()
+    val coroutineScope = sessionScope
 
     LaunchedEffect(sessionManager) {
-        sessionManager?.session?.collect { snapshot ->
+        sessionManager.session.collect { snapshot ->
+            val previousState = connectionState
             connectionState = snapshot.connectionState
+            if (snapshot.connectionState == ConnectionState.CONNECTED) {
+                activeServer = snapshot.server?.copy(online = true)
+                if (previousState != ConnectionState.CONNECTED) destination = AppDestination.Chat
+            }
             connectionError = snapshot.lastError?.let { error ->
                 listOfNotNull(error.serverMessage, error.diagnosticCode).distinct().joinToString("\n")
             }
@@ -76,7 +83,7 @@ fun CraftConnectApp(
     }
 
     LaunchedEffect(sessionManager) {
-        sessionManager?.dialogEvents?.collect { event ->
+        sessionManager.dialogEvents.collect { event ->
             serverDialog = when (event) {
                 is ServerDialogEvent.Show -> event.dialog
                 ServerDialogEvent.Clear -> null
@@ -112,10 +119,10 @@ fun CraftConnectApp(
                         onUpdate = serverRepository::update,
                         onDelete = serverRepository::delete,
                         onConnect = { server, username ->
+                            onBeforeConnect()
                             coroutineScope.launch {
-                                sessionManager?.disconnect()
+                                sessionManager.disconnect()
                                 val manager = sessionManagerFactory.create()
-                                sessionManager = manager
                                 connectionState = ConnectionState.CONNECTING
                                 connectionError = null
                                 manager.connect(server, username)
@@ -132,7 +139,7 @@ fun CraftConnectApp(
                     )
                     AppDestination.Chat -> ChatScreen(currentServer, chatMessages, connectionState == ConnectionState.CONNECTED) { message ->
                         coroutineScope.launch {
-                            val manager = sessionManager ?: return@launch
+                            val manager = sessionManager
                             if (message.startsWith('/')) manager.sendCommand(message) else manager.sendChat(message)
                         }
                     }
@@ -153,11 +160,11 @@ fun CraftConnectApp(
                 dialog = dialog,
                 onSubmit = { actionId, values ->
                     serverDialog = null
-                    coroutineScope.launch { sessionManager?.submitDialog(actionId, values) }
+                    coroutineScope.launch { sessionManager.submitDialog(actionId, values) }
                 },
                 onCancel = { actionId ->
                     serverDialog = null
-                    coroutineScope.launch { sessionManager?.submitDialog(actionId, emptyMap()) }
+                    coroutineScope.launch { sessionManager.submitDialog(actionId, emptyMap()) }
                 },
             )
         }
