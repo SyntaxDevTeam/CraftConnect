@@ -4,8 +4,8 @@ import java.io.DataInputStream
 import pl.syntaxdevteam.craftconnect.protocol.legacy.readProtocolString
 import pl.syntaxdevteam.craftconnect.protocol.legacy.readVarInt
 
-internal data class ChatDecoration(val translationKey: String, val parameters: List<Int>) {
-    fun render(name: String, message: String, target: String?): String = renderChatTranslation(
+internal data class ChatDecoration(val translationKey: String, val parameters: List<Int>, val style: Map<String, NbtTag> = emptyMap()) {
+    fun render(name: String, message: String, target: String?): String = (if (style.isEmpty()) "" else style.formattingCodes()) + renderChatTranslation(
         translationKey,
         parameters.map { when (it) { 0 -> message; 1 -> name; else -> target.orEmpty() } },
     )
@@ -32,7 +32,7 @@ internal class ServerChatTypes {
             }
             received[id] = if (translation != null && parameters != null) {
                 require(parameters.size <= 3)
-                ChatDecoration(translation, parameters)
+                ChatDecoration(translation, parameters, (chat?.value?.get("style") as? NbtTag.CompoundTag)?.value.orEmpty())
             } else fallback(key)
         }
         require(input.available() == 0)
@@ -50,10 +50,10 @@ internal class ServerChatTypes {
     private fun readInlineDecoration(input: DataInputStream): ChatDecoration {
         val key = input.readProtocolString()
         val parameters = List(input.readVarInt().also { require(it in 0..3) }) {
-            input.readVarInt().also { require(it in 0..2) }
+            when (input.readVarInt()) { 0 -> 1; 1 -> 2; 2 -> 0; else -> error("Invalid chat parameter") }
         }
-        input.readAnonymousNbt() // style
-        return ChatDecoration(key, parameters)
+        val style = (input.readAnonymousNbt() as? NbtTag.CompoundTag)?.value.orEmpty()
+        return ChatDecoration(key, parameters, style)
     }
 
     private fun fallback(key: String): ChatDecoration = when (key) {
@@ -85,3 +85,4 @@ internal fun renderChatTranslation(key: String, args: List<String>, fallback: St
         }
     }.take(16_384)
 }
+

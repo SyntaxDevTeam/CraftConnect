@@ -60,8 +60,8 @@ private fun DataInputStream.readPayload(type: Int, depth: Int = 0): NbtTag {
 }
 
 private fun DataInputStream.readNbtString(): String {
-    val size = readUnsignedShort()
-    return ByteArray(size).also(::readFully).toString(Charsets.UTF_8)
+    // NBT strings use Java modified UTF-8, including surrogate pairs.
+    return readUTF()
 }
 
 private fun DataInputStream.readSafeLength(): Int = readInt().also {
@@ -111,3 +111,4 @@ private const val COMPOUND = 10
 private const val INT_ARRAY = 11
 private const val LONG_ARRAY = 12
 private const val MAX_COLLECTION_SIZE = 65_536
+

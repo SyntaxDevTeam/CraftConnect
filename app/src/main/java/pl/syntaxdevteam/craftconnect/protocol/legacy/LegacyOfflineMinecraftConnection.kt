@@ -145,7 +145,7 @@ class LegacyOfflineMinecraftConnection(
                 val packetInput = readPacket(requireInput(), compressionThreshold)
                 when (packetInput.readVarInt()) {
                     0x02 -> runCatching {
-                        val content = readLegacyChat(packetInput.readProtocolString(MAX_JSON_LENGTH))
+                        val content = readFormattedLegacyChat(packetInput.readProtocolString(MAX_JSON_LENGTH))
                         if (packetInput.readUnsignedByte() != 2) chatHistory.append(content)
                     }.getOrNull()
                     CLIENTBOUND_CUSTOM_PAYLOAD -> {
@@ -321,3 +321,4 @@ private fun String.minecraftText(): String {
         .replace("\\\\", "\\")
         .take(512)
 }
+

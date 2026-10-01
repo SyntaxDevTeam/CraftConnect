@@ -68,8 +68,8 @@ fun ChatScreen(server: ServerProfile, messages: List<ReceivedChatMessage>, conne
         NeonCard(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 if (messages.isEmpty()) item { Text(stringResource(R.string.chat_empty), color = TextSecondary) }
                 items(messages, key = { it.id }) { ChatLine(it) }
@@ -127,15 +127,19 @@ fun ChatScreen(server: ServerProfile, messages: List<ReceivedChatMessage>, conne
 @Composable
 private fun ChatLine(message: ReceivedChatMessage) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Text(message.content, color = TextPrimary, modifier = Modifier.weight(1f), fontSize = 13.sp)
+        Text(
+            pl.syntaxdevteam.craftconnect.ui.components.minecraftChatText(message.formattedContent),
+            color = TextPrimary, modifier = Modifier.weight(1f), fontSize = 14.sp, lineHeight = 18.sp,
+        )
         Text(
             android.text.format.DateFormat.getTimeFormat(LocalContext.current).format(java.util.Date(message.receivedAtEpochMillis)),
             color = TextSecondary, fontSize = 10.sp,
         )
     }
 }
+
 
 

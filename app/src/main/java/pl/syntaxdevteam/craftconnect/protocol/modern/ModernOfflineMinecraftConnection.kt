@@ -285,12 +285,12 @@ class ModernOfflineMinecraftConnection(
                     0x15 -> commonRequests.replyCookie(packetInput, 0x15)
                     resourcePackId -> commonRequests.replyResourcePack(packetInput, 0x32)
                     storeCookieId -> commonRequests.storeCookie(packetInput)
-                    systemChatId -> runCatching { packetInput.readSystemChat() }.getOrNull()?.let(chatHistory::append)
-                    0x21 -> runCatching { packetInput.readProfilelessChat(chatTypes) }.getOrNull()?.let(chatHistory::append)
+                    systemChatId -> runCatching { packetInput.readSystemChat(formatted = true) }.getOrNull()?.let(chatHistory::append)
+                    0x21 -> runCatching { packetInput.readProfilelessChat(chatTypes, formatted = true) }.getOrNull()?.let(chatHistory::append)
                     playerInfoUpdateId -> playerList.update(packetInput)
                     playerInfoRemoveId -> playerList.remove(packetInput)
                     playerChatId -> {
-                        val chat = runCatching { packetInput.readPlayerChat(chatTypes) }.getOrNull()
+                        val chat = runCatching { packetInput.readPlayerChat(chatTypes, formatted = true) }.getOrNull()
                         if (chat != null) {
                             chatHistory.append(chat.text)
                             if (chat.signed) sendPacket(packet {
@@ -523,5 +523,6 @@ private fun java.io.DataOutputStream.writeUuid(uuid: UUID) { writeLong(uuid.most
 private fun String.minecraftText(): String =
     (Regex("\"text\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"").find(this)?.groupValues?.get(1) ?: take(512))
         .replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\").take(512)
+
 
 

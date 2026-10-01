@@ -15,6 +15,7 @@ internal class ChatHistory(private val clock: () -> Long = System::currentTimeMi
     @Synchronized fun append(text: String) {
         val clean = text.replace(Regex("§[0-9a-fk-orx]", RegexOption.IGNORE_CASE), "").take(16_384)
         if (clean.isBlank()) return
-        state.value = (state.value.takeLast(499) + ReceivedChatMessage(nextId++, clean, clock()))
+        state.value = (state.value.takeLast(499) + ReceivedChatMessage(nextId++, clean, clock(), text.take(65_536)))
     }
 }
+

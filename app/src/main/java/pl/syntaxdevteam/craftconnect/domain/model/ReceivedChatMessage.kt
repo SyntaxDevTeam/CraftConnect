@@ -5,4 +5,6 @@ data class ReceivedChatMessage(
     val id: Long,
     val content: String,
     val receivedAtEpochMillis: Long,
+    val formattedContent: String = content,
 )
+

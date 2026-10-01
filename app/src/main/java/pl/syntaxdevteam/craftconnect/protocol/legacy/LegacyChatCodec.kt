@@ -1,5 +1,7 @@
 package pl.syntaxdevteam.craftconnect.protocol.legacy
 
+import pl.syntaxdevteam.craftconnect.protocol.modern.NbtTag
+import pl.syntaxdevteam.craftconnect.protocol.modern.chatFormattedText
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -27,4 +29,19 @@ private fun legacyText(value: Any?, depth: Int): String {
         }
         else -> ""
     }.take(16_384)
+}
+
+
+internal fun readFormattedLegacyChat(json: String): String =
+    legacyComponent(JSONTokener(json).nextValue(), 0).chatFormattedText()
+
+private fun legacyComponent(value: Any?, depth: Int): NbtTag {
+    require(depth <= 64)
+    return when (value) {
+        is String -> NbtTag.StringTag(value)
+        is Boolean -> NbtTag.ByteTag(if (value) 1 else 0)
+        is JSONArray -> NbtTag.ListTag((0 until value.length()).map { legacyComponent(value.opt(it), depth + 1) })
+        is JSONObject -> NbtTag.CompoundTag(value.keys().asSequence().associateWith { legacyComponent(value.opt(it), depth + 1) })
+        else -> NbtTag.StringTag("")
+    }
 }

@@ -232,7 +232,7 @@ fun SessionHeader(server: ServerProfile) {
             ServerGlyph(server.name, Modifier.size(48.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(server.name, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(server.name, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Text(server.address, color = TextSecondary, fontSize = 12.sp)
                 Spacer(Modifier.height(5.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -285,3 +285,4 @@ private fun RowScope.BottomItem(
         ),
     )
 }
+

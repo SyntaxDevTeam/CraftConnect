@@ -33,7 +33,7 @@ class ServerChatTypesTest {
         val chat = input(packet {
             writeByte(8); writeUTF("Adrian: hello"); writeVarInt(0)
             repeat(2) {
-                writeProtocolString("%s"); writeVarInt(1); writeVarInt(0)
+                writeProtocolString("%s"); writeVarInt(1); writeVarInt(2)
                 writeByte(10); writeByte(0)
             }
             writeByte(8); writeUTF("Adrian"); writeBoolean(false)
@@ -62,3 +62,4 @@ class ServerChatTypesTest {
         assertEquals("Adrian: hello", types.readHolder(input(packet { writeVarInt(1) })).render("Adrian", "hello", null))
     }
 }
+
