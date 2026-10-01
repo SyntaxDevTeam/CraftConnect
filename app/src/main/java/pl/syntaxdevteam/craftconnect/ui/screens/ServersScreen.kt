@@ -1,5 +1,7 @@
 package pl.syntaxdevteam.craftconnect.ui.screens
 
+import pl.syntaxdevteam.craftconnect.domain.model.AccountType.MICROSOFT
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,7 +69,7 @@ fun ServersScreen(
     onCreate: (name: String, address: String, favorite: Boolean, version: MinecraftVersion) -> Unit,
     onUpdate: (ServerProfile) -> Unit,
     onDelete: (String) -> Unit,
-    onConnect: (ServerProfile, String) -> Unit,
+    onConnect: (ServerProfile, AccountProfile) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     var favoritesOnly by remember { mutableStateOf(false) }
@@ -292,11 +294,12 @@ private fun OfflineConnectDialog(
     connectionError: String?,
     accounts: List<AccountProfile>,
     onDismiss: () -> Unit,
-    onConnect: (String, String) -> Unit,
+    onConnect: (String, AccountProfile) -> Unit,
 ) {
     var address by remember(initialAddress) { mutableStateOf(initialAddress) }
-    var username by remember(accounts) { mutableStateOf(accounts.firstOrNull()?.username.orEmpty()) }
-    val valid = address.isNotBlank() && Regex("[A-Za-z0-9_]{3,16}").matches(username)
+    var selectedId by remember(accounts) { mutableStateOf(accounts.firstOrNull()?.id) }
+    val selected = accounts.find { it.id == selectedId }
+    val valid = address.isNotBlank() && selected != null
 
     AlertDialog(
         onDismissRequest = { if (!connecting) onDismiss() },
@@ -311,9 +314,9 @@ private fun OfflineConnectDialog(
                     enabled = !connecting,
                 )
                 OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text(stringResource(R.string.offline_username)) },
+                    value = selected?.username.orEmpty(),
+                    onValueChange = {},
+                    label = { Text(stringResource(R.string.choose_saved_account)) },
                     singleLine = true,
                     enabled = !connecting,
                     readOnly = true,
@@ -324,7 +327,7 @@ private fun OfflineConnectDialog(
                     Text(stringResource(R.string.choose_saved_account), color = TextSecondary, fontSize = 12.sp)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(accounts, key = { it.id }) { account ->
-                            GlowButton(account.username, onClick = { username = account.username })
+                            GlowButton(stringResource(R.string.account_choice_label, account.username, stringResource(if (account.type == MICROSOFT) R.string.microsoft_premium_account else R.string.offline_account)), onClick = { if (!connecting) selectedId = account.id })
                         }
                     }
                 }
@@ -341,7 +344,7 @@ private fun OfflineConnectDialog(
         confirmButton = {
             GlowButton(
                 if (connecting) stringResource(R.string.connecting) else stringResource(R.string.connect),
-                onClick = { if (valid && !connecting) onConnect(address.trim(), username) },
+                onClick = { if (valid && !connecting) onConnect(address.trim(), checkNotNull(selected)) },
             )
         },
         dismissButton = { GlowButton(stringResource(R.string.cancel), onClick = onDismiss) },

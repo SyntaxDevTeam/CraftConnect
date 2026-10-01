@@ -1,5 +1,7 @@
 package pl.syntaxdevteam.craftconnect.data.session
 
+import pl.syntaxdevteam.craftconnect.domain.model.AccountProfile
+
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -26,6 +28,11 @@ class ForegroundSessionManager(
     override suspend fun connect(server: ServerProfile, username: String) {
         service.start()
         delegate.connect(server, username)
+    }
+
+    override suspend fun connect(server: ServerProfile, account: AccountProfile) {
+        service.start()
+        delegate.connect(server, account)
     }
 
     override suspend fun disconnect() {

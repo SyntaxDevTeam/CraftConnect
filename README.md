@@ -103,3 +103,11 @@ Failures include the last 12 inbound/outbound packet IDs, prefixed `i`/`o`, toge
 with the stage and protocol. The trace contains no packet payloads or credentials.
 These changes address missing configuration replies; live connectivity to MoonVale
 has not been verified from the development environment.
+
+## Microsoft / premium accounts
+
+Account manager supports Microsoft sign-in in the system browser, verified Java
+Edition profiles, secure session storage and refresh, and premium account
+selection for authenticated server connections. Publisher setup in Entra and
+Mojang AppID approval are required before live use. See
+[Microsoft accounts: setup, security and current limits](docs/MICROSOFT_ACCOUNTS.md).

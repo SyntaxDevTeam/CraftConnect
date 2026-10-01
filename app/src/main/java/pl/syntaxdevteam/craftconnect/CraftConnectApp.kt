@@ -1,5 +1,9 @@
 package pl.syntaxdevteam.craftconnect
 
+import pl.syntaxdevteam.craftconnect.domain.auth.AuthProblem
+import pl.syntaxdevteam.craftconnect.data.auth.MicrosoftAccountManager
+import pl.syntaxdevteam.craftconnect.ui.components.authProblemText
+
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -48,6 +52,7 @@ fun CraftConnectApp(
     accountRepository: AccountRepository,
     sessionScope: CoroutineScope,
     onBeforeConnect: () -> Unit,
+    microsoftAccounts: MicrosoftAccountManager,
 ) {
     val sessionManager = remember { sessionManagerFactory.create() }
     var destination by rememberSaveable {
@@ -61,6 +66,8 @@ fun CraftConnectApp(
     val chatMessages by sessionManager.chatMessages.collectAsState()
     val savedServers by serverRepository.servers.collectAsState()
     val savedAccounts by accountRepository.accounts.collectAsState()
+    val microsoftState by microsoftAccounts.state.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = sessionScope
 
     LaunchedEffect(sessionManager) {
@@ -72,7 +79,10 @@ fun CraftConnectApp(
                 if (previousState != ConnectionState.CONNECTED) destination = AppDestination.Chat
             }
             connectionError = snapshot.lastError?.let { error ->
-                listOfNotNull(error.serverMessage, error.diagnosticCode).distinct().joinToString("\n")
+                AuthProblem.entries.firstOrNull {
+                    error.diagnosticCode == "premium_${it.name.lowercase()}"
+                }?.let { context.getString(authProblemText(it)) }
+                    ?: listOfNotNull(error.serverMessage, error.diagnosticCode).distinct().joinToString("\n")
             }
             if (snapshot.connectionState != ConnectionState.CONNECTED) serverDialog = null
             if (snapshot.connectionState == ConnectionState.FAILED) {
@@ -118,17 +128,20 @@ fun CraftConnectApp(
                         },
                         onUpdate = serverRepository::update,
                         onDelete = serverRepository::delete,
-                        onConnect = { server, username ->
+                        onConnect = { server, account ->
                             onBeforeConnect()
                             coroutineScope.launch {
                                 sessionManager.disconnect()
                                 val manager = sessionManagerFactory.create()
                                 connectionState = ConnectionState.CONNECTING
                                 connectionError = null
-                                manager.connect(server, username)
+                                manager.connect(server, account)
                                 connectionState = manager.session.value.connectionState
                                 connectionError = manager.session.value.lastError?.let { error ->
-                                    listOfNotNull(error.serverMessage, error.diagnosticCode).distinct().joinToString("\n")
+                                    AuthProblem.entries.firstOrNull {
+                                        error.diagnosticCode == "premium_${it.name.lowercase()}"
+                                    }?.let { context.getString(authProblemText(it)) }
+                                        ?: listOfNotNull(error.serverMessage, error.diagnosticCode).distinct().joinToString("\n")
                                 }
                                 if (connectionState == ConnectionState.CONNECTED) {
                                     activeServer = server.copy(online = true)
@@ -148,7 +161,13 @@ fun CraftConnectApp(
                         accounts = savedAccounts,
                         onCreate = accountRepository::createOffline,
                         onUpdate = accountRepository::update,
-                        onDelete = accountRepository::delete,
+                        onDelete = { id -> coroutineScope.launch {
+                            if (id == "microsoft:${sessionManager.session.value.uuid?.replace("-", "")}") sessionManager.disconnect()
+                            microsoftAccounts.delete(id)
+                        } },
+                        microsoftState = microsoftState,
+                        onMicrosoftSignIn = microsoftAccounts::start,
+                        onCancelSignIn = microsoftAccounts::cancel,
                     )
                     AppDestination.Settings -> SettingsScreen()
                 }

@@ -10,7 +10,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import org.xbill.DNS.config.AndroidResolverConfigProvider
 import pl.syntaxdevteam.craftconnect.data.server.SharedPreferencesServerRepository
-import pl.syntaxdevteam.craftconnect.data.account.SharedPreferencesAccountRepository
 import pl.syntaxdevteam.craftconnect.ui.theme.CraftConnectTheme
 
 class MainActivity : ComponentActivity() {
@@ -28,19 +27,16 @@ class MainActivity : ComponentActivity() {
     private val serverRepository by lazy {
         SharedPreferencesServerRepository(getSharedPreferences("saved_servers", MODE_PRIVATE))
     }
-    private val accountRepository by lazy {
-        SharedPreferencesAccountRepository(getSharedPreferences("saved_accounts", MODE_PRIVATE))
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AndroidResolverConfigProvider.setContext(applicationContext)
         setContent {
             CraftConnectTheme {
                 CraftConnectApp(
-                    (application as CraftConnectApplication).sessionManagerFactory, serverRepository, accountRepository,
+                    (application as CraftConnectApplication).sessionManagerFactory, serverRepository, (application as CraftConnectApplication).accountRepository,
                     (application as CraftConnectApplication).sessionScope,
                     ::requestConnectionNotification,
+                    (application as CraftConnectApplication).microsoftAccounts,
                 )
             }
         }

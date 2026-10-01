@@ -21,6 +21,31 @@ import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnectionException
 
 class DefaultSessionManagerTest {
     @Test
+    fun premiumAuthenticationFailureDoesNotFallBackToOffline() = runTest {
+        val connection = FakeConnection()
+        val manager = DefaultSessionManager(connection, observerScope = backgroundScope, premiumIdentity = {
+            throw pl.syntaxdevteam.craftconnect.domain.auth.AuthenticationException(pl.syntaxdevteam.craftconnect.domain.auth.AuthProblem.REAUTHENTICATE)
+        })
+        manager.connect(server, pl.syntaxdevteam.craftconnect.domain.model.AccountProfile("microsoft:id", "Player", pl.syntaxdevteam.craftconnect.domain.model.AccountType.MICROSOFT))
+        assertEquals(ConnectionState.FAILED, manager.session.value.connectionState)
+        assertEquals("premium_reauthenticate", manager.session.value.lastError?.diagnosticCode)
+        assertEquals(0, connection.offlineConnections)
+    }
+
+    @Test
+    fun premiumConnectPassesVerifiedIdentityInsteadOfStoredDisplayName() = runTest {
+        val connection = FakeConnection()
+        val identity = pl.syntaxdevteam.craftconnect.domain.auth.MinecraftIdentity("NewName", "profile-id", "secret")
+        val manager = DefaultSessionManager(connection, observerScope = backgroundScope, premiumIdentity = { identity })
+        manager.connect(server, pl.syntaxdevteam.craftconnect.domain.model.AccountProfile("microsoft:id", "OldName", pl.syntaxdevteam.craftconnect.domain.model.AccountType.MICROSOFT))
+        assertEquals(ConnectionState.CONNECTED, manager.session.value.connectionState)
+        assertEquals("NewName", manager.session.value.username)
+        assertEquals("profile-id", manager.session.value.uuid)
+        assertEquals(0, connection.offlineConnections)
+        assertEquals(identity, connection.premiumIdentity)
+    }
+
+    @Test
     fun successfulConnectionPublishesConnectedSession() = runTest {
         val manager = DefaultSessionManager(FakeConnection(), clock = { 42L })
 
@@ -149,11 +174,18 @@ class DefaultSessionManagerTest {
     ) : MinecraftConnection {
         val failure = MutableStateFlow<MinecraftConnectionException?>(null)
         override val connectionFailures = failure.filterNotNull()
+        var offlineConnections = 0
+        var premiumIdentity: pl.syntaxdevteam.craftconnect.domain.auth.MinecraftIdentity? = null
+        override suspend fun connect(server: ServerProfile, identity: pl.syntaxdevteam.craftconnect.domain.auth.MinecraftIdentity): ConnectedSession {
+            premiumIdentity = identity
+            return ConnectedSession(775, identity.username, identity.uuid)
+        }
         var disconnected = false
         var sentCommands = 0
         var submittedAction: String? = null
         var submittedValues: Map<String, String>? = null
         override suspend fun connect(server: ServerProfile, username: String): ConnectedSession {
+            offlineConnections++
             connectFailure?.let { throw it }
             failure.value = receiveFailure
             return ConnectedSession(
