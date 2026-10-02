@@ -7,6 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
+import pl.syntaxdevteam.craftconnect.domain.integration.RconConfiguration
 import pl.syntaxdevteam.craftconnect.domain.model.MinecraftVersion
 import pl.syntaxdevteam.craftconnect.domain.model.ServerProfile
 
@@ -22,6 +23,12 @@ class ServerListCodecTest {
             playersMax = 100,
             pingMs = 42,
             favorite = true,
+            rcon = RconConfiguration(
+                enabled = true,
+                host = "admin.example.net",
+                port = 25575,
+                credentialId = "rcon:0123456789abcdef0123456789abcdef",
+            ),
         )
 
         val decoded = ServerListCodec.decode(ServerListCodec.encode(listOf(source))).single()
@@ -31,6 +38,7 @@ class ServerListCodecTest {
         assertEquals(source.address, decoded.address)
         assertEquals(source.favorite, decoded.favorite)
         assertEquals(source.minecraftVersion, decoded.minecraftVersion)
+        assertEquals(source.rcon, decoded.rcon)
         assertFalse(decoded.online)
         assertEquals(0, decoded.playersOnline)
         assertEquals(0, decoded.playersMax)
@@ -63,6 +71,7 @@ class ServerListCodecTest {
         assertEquals(MinecraftVersion.JAVA_26_1, server.minecraftVersion)
         assertEquals(true, server.favorite)
         assertEquals("localhost", server.address)
+        assertNull(server.rcon)
     }
 
     @Test
