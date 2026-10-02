@@ -137,3 +137,41 @@ Server names, usernames, chat messages and other remote/runtime data are not tra
 ## File creation and structure policy
 
 Files should be segregated by responsibility. Do not create generic catch-all utility packages or oversized screens when a reusable component or domain abstraction is appropriate.
+
+## Administration and AuthGatewayX integration
+
+Before changing RCON, server administration, pairing, console, metrics, branding, or AuthGatewayX integration, read:
+
+```text
+docs/ADMIN_INTEGRATION.md
+```
+
+The architecture is intentionally layered:
+
+```text
+Minecraft Protocol -> baseline player capabilities
+RCON               -> optional Console Lite / command-response
+AuthGatewayX        -> optional paired Enhanced Mode
+```
+
+Non-negotiable rules:
+
+- CraftConnect must remain useful without any server plugin.
+- Do not make `CraftConnectBridge` mandatory for normal chat, commands, players, MOTD or status.
+- Standard Minecraft actions execute with the connected player's normal server-side permissions.
+- RCON is optional and must be isolated from the Minecraft session lifecycle.
+- RCON passwords are secrets and must not be stored in plaintext SharedPreferences, profile JSON, logs, packet traces or telemetry.
+- AuthGatewayX is the preferred provider for overlapping enhanced capabilities; RCON is only a fallback.
+- Pairing does not grant authorization by itself. AuthGatewayX capabilities come from current server-side permissions.
+- UI code consumes the stable domain capability model and must not depend directly on RCON or AuthGatewayX transport classes.
+- Missing capabilities should normally hide/disable unavailable administrative surfaces instead of presenting misleading controls.
+- `console view` and `console execute` are separate privileges.
+- Failure of RCON or AuthGatewayX integration must degrade only that provider and must not disconnect a healthy Minecraft session.
+
+The shared capability model lives under:
+
+```text
+app/src/main/java/pl/syntaxdevteam/craftconnect/domain/integration/
+```
+
+Protocol/provider implementations must map into that model instead of leaking transport-specific state into Compose.
