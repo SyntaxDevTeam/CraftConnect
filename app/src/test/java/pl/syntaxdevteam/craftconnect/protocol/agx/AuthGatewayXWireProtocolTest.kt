@@ -5,6 +5,7 @@ import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import pl.syntaxdevteam.craftconnect.domain.integration.ServerCapability
 
 class AuthGatewayXWireProtocolTest {
     @Test
