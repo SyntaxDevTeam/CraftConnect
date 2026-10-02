@@ -1,27 +1,27 @@
 package pl.syntaxdevteam.craftconnect.domain.integration
 
 /**
- * Stable domain-facing capability model used by UI and session orchestration.
+ * Stable domain-facing feature model used by UI and session orchestration.
  *
- * Transport implementations (Minecraft, RCON, AuthGatewayX) may expose a subset
- * of these capabilities. Presentation code must depend on this model instead of
- * concrete protocol classes.
+ * A capability describes what the user may do, while [CapabilityProvider]
+ * describes how CraftConnect can currently provide that feature. Keeping those
+ * concerns separate lets AuthGatewayX transparently replace RCON for overlapping
+ * administration features without changing presentation code.
  */
 enum class ServerCapability {
-    MINECRAFT_CHAT,
-    MINECRAFT_COMMANDS,
+    CHAT,
+    PLAYER_COMMANDS,
     PLAYER_LIST,
     SERVER_STATUS,
+    MOTD,
 
-    RCON_COMMANDS,
-
-    AGX_PAIRING,
-    AGX_STATUS,
-    AGX_STATS,
-    AGX_CONSOLE_VIEW,
-    AGX_CONSOLE_EXECUTE,
-    AGX_BRANDING,
-    AGX_DIAGNOSTICS,
+    PAIRING,
+    SERVER_STATS,
+    SERVER_INFO,
+    CONSOLE_VIEW,
+    CONSOLE_EXECUTE,
+    BRANDING,
+    DIAGNOSTICS,
 }
 
 enum class CapabilityProvider {
@@ -41,20 +41,66 @@ data class ServerCapabilitySnapshot(
     fun supports(capability: ServerCapability): Boolean =
         capabilities.any { it.capability == capability }
 
+    fun providersFor(capability: ServerCapability): Set<CapabilityProvider> =
+        capabilities.asSequence()
+            .filter { it.capability == capability }
+            .mapTo(linkedSetOf()) { it.provider }
+
     /**
-     * Provider precedence for overlapping administration features.
-     * AuthGatewayX is authoritative, RCON is a fallback, Minecraft is baseline.
+     * AuthGatewayX is authoritative for overlapping enhanced features. RCON is
+     * only a fallback, and the standard Minecraft session remains the baseline.
      */
     fun preferredProvider(capability: ServerCapability): CapabilityProvider? =
-        capabilities
-            .asSequence()
-            .filter { it.capability == capability }
-            .map { it.provider }
-            .minByOrNull { providerPriority(it) }
+        providersFor(capability).minByOrNull(::providerPriority)
 
-    private fun providerPriority(provider: CapabilityProvider): Int = when (provider) {
-        CapabilityProvider.AUTH_GATEWAY_X -> 0
-        CapabilityProvider.RCON -> 1
-        CapabilityProvider.MINECRAFT -> 2
+    fun plus(other: ServerCapabilitySnapshot): ServerCapabilitySnapshot =
+        ServerCapabilitySnapshot(capabilities + other.capabilities)
+
+    companion object {
+        val MINECRAFT_BASELINE = ServerCapabilitySnapshot(
+            setOf(
+                ProvidedCapability(ServerCapability.CHAT, CapabilityProvider.MINECRAFT),
+                ProvidedCapability(ServerCapability.PLAYER_COMMANDS, CapabilityProvider.MINECRAFT),
+                ProvidedCapability(ServerCapability.PLAYER_LIST, CapabilityProvider.MINECRAFT),
+                ProvidedCapability(ServerCapability.SERVER_STATUS, CapabilityProvider.MINECRAFT),
+                ProvidedCapability(ServerCapability.MOTD, CapabilityProvider.MINECRAFT),
+            ),
+        )
+
+        val RCON_LITE = ServerCapabilitySnapshot(
+            setOf(
+                ProvidedCapability(ServerCapability.CONSOLE_EXECUTE, CapabilityProvider.RCON),
+            ),
+        )
+
+        fun authGatewayX(granted: Set<ServerCapability>): ServerCapabilitySnapshot =
+            ServerCapabilitySnapshot(
+                granted.mapTo(linkedSetOf()) {
+                    ProvidedCapability(it, CapabilityProvider.AUTH_GATEWAY_X)
+                },
+            )
+
+        private fun providerPriority(provider: CapabilityProvider): Int = when (provider) {
+            CapabilityProvider.AUTH_GATEWAY_X -> 0
+            CapabilityProvider.RCON -> 1
+            CapabilityProvider.MINECRAFT -> 2
+        }
+    }
+}
+
+/** Stateless merger used by session orchestration and tests. */
+object ServerCapabilityResolver {
+    fun resolve(
+        minecraftConnected: Boolean,
+        rconAvailable: Boolean,
+        authGatewayXCapabilities: Set<ServerCapability> = emptySet(),
+    ): ServerCapabilitySnapshot {
+        var snapshot = ServerCapabilitySnapshot()
+        if (minecraftConnected) snapshot = snapshot.plus(ServerCapabilitySnapshot.MINECRAFT_BASELINE)
+        if (rconAvailable) snapshot = snapshot.plus(ServerCapabilitySnapshot.RCON_LITE)
+        if (authGatewayXCapabilities.isNotEmpty()) {
+            snapshot = snapshot.plus(ServerCapabilitySnapshot.authGatewayX(authGatewayXCapabilities))
+        }
+        return snapshot
     }
 }
