@@ -15,6 +15,11 @@ data class ConnectedSession(
     val uuid: String,
 )
 
+data class ServerCustomPayload(
+    val channel: String,
+    val payload: ByteArray,
+)
+
 /**
  * Packet-independent boundary implemented by a version-aware protocol adapter.
  * Presentation code communicates through SessionManager instead of this type.
@@ -29,6 +34,13 @@ interface MinecraftConnection {
     val dialogEvents: Flow<ServerDialogEvent>
         get() = emptyFlow()
 
+    /**
+     * Raw plugin/custom payloads needed by isolated integration adapters such as
+     * AuthGatewayX. UI code must not consume this stream directly.
+     */
+    val customPayloads: Flow<ServerCustomPayload>
+        get() = emptyFlow()
+
     /** Terminal receive failure, replayed so an immediate disconnect cannot be missed. */
     val connectionFailures: Flow<MinecraftConnectionException>
         get() = emptyFlow()
@@ -40,6 +52,9 @@ interface MinecraftConnection {
     suspend fun disconnect()
     suspend fun sendChat(message: String)
     suspend fun sendCommand(command: String)
+    suspend fun sendCustomPayload(channel: String, payload: ByteArray) {
+        error("This protocol does not support custom payloads")
+    }
     suspend fun submitDialog(actionId: String, values: Map<String, String>) {
         error("This protocol does not support server dialogs")
     }
@@ -56,5 +71,3 @@ sealed class MinecraftConnectionException(
         MinecraftConnectionException(code, serverMessage)
     class Protocol(code: String, cause: Throwable? = null) : MinecraftConnectionException(code, code, cause)
 }
-
-
