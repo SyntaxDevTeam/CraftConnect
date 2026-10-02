@@ -32,6 +32,7 @@ import pl.syntaxdevteam.craftconnect.protocol.JoinVisibilityCommands
 import pl.syntaxdevteam.craftconnect.protocol.ConnectedSession
 import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnection
 import pl.syntaxdevteam.craftconnect.protocol.MinecraftConnectionException
+import pl.syntaxdevteam.craftconnect.protocol.ServerCustomPayload
 import pl.syntaxdevteam.craftconnect.protocol.legacy.ProtocolCodecException
 import pl.syntaxdevteam.craftconnect.protocol.legacy.frame
 import pl.syntaxdevteam.craftconnect.protocol.legacy.packet
@@ -64,6 +65,8 @@ class ModernOfflineMinecraftConnection(
     private val open = AtomicBoolean(false)
     private val mutableDialogEvents = MutableSharedFlow<ServerDialogEvent>(replay = 1)
     override val dialogEvents = mutableDialogEvents.asSharedFlow()
+    private val mutableCustomPayloads = MutableSharedFlow<ServerCustomPayload>(extraBufferCapacity = 16)
+    override val customPayloads = mutableCustomPayloads.asSharedFlow()
     private val mutableConnectionFailures = MutableStateFlow<MinecraftConnectionException?>(null)
     override val connectionFailures = mutableConnectionFailures.filterNotNull()
     private var socket: Socket? = null
@@ -169,22 +172,24 @@ class ModernOfflineMinecraftConnection(
     }
 
     private suspend fun sendAuthenticationSubscription(payload: ByteArray) = withContext(Dispatchers.IO) {
-        sendPacket(packet {
-            writeVarInt(SERVERBOUND_CUSTOM_PAYLOAD)
-            writeProtocolString("minecraft:register")
-            write(AuthenticationBridgeProtocol.CHANNEL.toByteArray(Charsets.UTF_8))
-        })
-        sendPacket(packet {
-            writeVarInt(SERVERBOUND_CUSTOM_PAYLOAD)
-            writeProtocolString(AuthenticationBridgeProtocol.CHANNEL)
-            write(payload)
-        })
+        sendCustomPayload("minecraft:register", AuthenticationBridgeProtocol.CHANNEL.toByteArray(Charsets.UTF_8))
+        sendCustomPayload(AuthenticationBridgeProtocol.CHANNEL, payload)
     }
 
     override suspend fun sendCommand(command: String) = withContext(Dispatchers.IO) {
         sendPacket(packet {
             writeVarInt(SERVERBOUND_COMMAND)
             writeProtocolString(command.removePrefix("/"))
+        })
+    }
+
+    override suspend fun sendCustomPayload(channel: String, payload: ByteArray) = withContext(Dispatchers.IO) {
+        require(RESOURCE_LOCATION.matches(channel)) { "Invalid custom payload channel" }
+        require(payload.size <= MAX_CUSTOM_PAYLOAD) { "Custom payload is too large" }
+        sendPacket(packet {
+            writeVarInt(SERVERBOUND_CUSTOM_PAYLOAD)
+            writeProtocolString(channel)
+            write(payload)
         })
     }
 
@@ -342,12 +347,13 @@ class ModernOfflineMinecraftConnection(
                     }
                     CLIENTBOUND_CUSTOM_PAYLOAD -> {
                         val channel = packetInput.readProtocolString()
-                        if (channel == AuthenticationBridgeProtocol.CHANNEL) {
-                            val size = packetInput.available()
-                            if (size <= 256) {
-                                val payload = ByteArray(size).also(packetInput::readFully)
+                        val size = packetInput.available()
+                        if (size in 0..MAX_CUSTOM_PAYLOAD) {
+                            val payload = ByteArray(size).also(packetInput::readFully)
+                            if (channel == AuthenticationBridgeProtocol.CHANNEL && size <= 256) {
                                 visibilityCommands.onBridgeMessage(payload)
                             }
+                            mutableCustomPayloads.tryEmit(ServerCustomPayload(channel, payload))
                         }
                     }
                     joinGameId -> readInitialGameMode(packetInput)
@@ -509,6 +515,7 @@ class ModernOfflineMinecraftConnection(
     private companion object {
         const val PROTOCOL_VERSION = 775
         const val MAX_TEXT_LENGTH = 262_144
+        const val MAX_CUSTOM_PAYLOAD = 64 * 1024
         const val HANDSHAKE = 0x00
         const val LOGIN_STATE = 2
         const val LOGIN_START = 0x00
