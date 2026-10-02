@@ -1,5 +1,7 @@
 package pl.syntaxdevteam.craftconnect.data.session
 
+import pl.syntaxdevteam.craftconnect.BuildConfig
+import pl.syntaxdevteam.craftconnect.data.integration.KeystoreCraftConnectDeviceKeyStore
 import pl.syntaxdevteam.craftconnect.domain.auth.AuthProblem.CONFIGURATION
 import pl.syntaxdevteam.craftconnect.domain.auth.AuthenticationException
 import pl.syntaxdevteam.craftconnect.domain.auth.MinecraftIdentity
@@ -47,7 +49,7 @@ class DefaultSessionManager(
     private val premiumIdentity: suspend (AccountProfile) -> MinecraftIdentity = {
         throw AuthenticationException(CONFIGURATION)
     },
-    private val authGatewayX: AuthGatewayXChannelClient? = null,
+    private val authGatewayX: AuthGatewayXChannelClient? = defaultAuthGatewayXClient(),
 ) : SessionManager {
     private val operationMutex = Mutex()
     private var failureObserver: Job? = null
@@ -253,6 +255,9 @@ class DefaultSessionManager(
         }
     }
 }
+
+private fun defaultAuthGatewayXClient(): AuthGatewayXChannelClient =
+    AuthGatewayXChannelClient(BuildConfig.VERSION_NAME, KeystoreCraftConnectDeviceKeyStore())
 
 private fun MinecraftConnectionException.toSessionError(): SessionError = when (this) {
     is MinecraftConnectionException.Network -> SessionError.Network(diagnosticCode, serverMessage)
