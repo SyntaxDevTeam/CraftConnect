@@ -1,5 +1,7 @@
 package pl.syntaxdevteam.craftconnect.domain.model
 
+import pl.syntaxdevteam.craftconnect.domain.integration.RconConfiguration
+
 data class ServerProfile(
     val id: String,
     val name: String,
@@ -10,6 +12,7 @@ data class ServerProfile(
     val pingMs: Int?,
     val favorite: Boolean = false,
     val minecraftVersion: MinecraftVersion = MinecraftVersion.JAVA_26_1,
+    val rcon: RconConfiguration? = null,
 )
 
 enum class PlayerRole {
@@ -61,4 +64,3 @@ sealed interface ServerDialogEvent {
     data class Show(val dialog: ServerDialogRequest) : ServerDialogEvent
     data object Clear : ServerDialogEvent
 }
-
